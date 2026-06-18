@@ -1,0 +1,951 @@
+[
+  {
+    "table": "dak",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "fk_section",
+      "fk_dak_type",
+      "fk_unit",
+      "fk_central_unit",
+      "mode_of_receipt",
+      "kpi_bill_type",
+      "record_status"
+    ],
+    "date_column": "created_at",
+    "why_this_source": "The 'dak' table is the root of the payment flow, with key metadata for tracking routing, status, and financial value. It contains a reliable amount and timestamp, and multiple FKs that link to organizational units and workflow stages.",
+    "feature_plan": [
+      {
+        "name": "dak_age_days",
+        "op": "age_days",
+        "reason": "Measures how long each dak has been in the system since creation, helping detect delays or stuck records in the payment flow.",
+        "source": "event_date"
+      },
+      {
+        "name": "dak_amount_ratio_to_median",
+        "op": "ratio_to_median",
+        "reason": "Identifies daks with unusually high or low amounts compared to the median, which may indicate misrouting, fraud, or data entry errors.",
+        "source": "amount"
+      },
+      {
+        "name": "dak_amount_ratio_to_group_median_by_section",
+        "op": "ratio_to_group_median",
+        "reason": "Detects abnormal amount patterns within specific sections, which could signal inconsistent processing or anomalies in unit-level workflows.",
+        "group_by": "fk_section"
+      },
+      {
+        "name": "dak_amount_ratio_to_group_median_by_dak_type",
+        "op": "ratio_to_group_median",
+        "reason": "Highlights outliers in amount distribution by dak type, useful for identifying misclassified or incorrectly routed daks.",
+        "group_by": "fk_dak_type"
+      },
+      {
+        "name": "dak_amount_ratio_to_group_median_by_unit",
+        "op": "ratio_to_group_median",
+        "reason": "Reveals anomalies in amount size per unit, which may indicate incorrect assignment or irregular processing behavior.",
+        "group_by": "fk_unit"
+      },
+      {
+        "name": "dak_amount_ratio_to_group_median_by_central_unit",
+        "op": "ratio_to_group_median",
+        "reason": "Flags unusual amounts tied to central units, potentially indicating misrouting or systemic issues in high-level processing.",
+        "group_by": "fk_central_unit"
+      },
+      {
+        "name": "dak_amount_ratio_to_group_median_by_mode_of_receipt",
+        "op": "ratio_to_group_median",
+        "reason": "Detects abnormal amount distributions by receipt mode, which could indicate improper handling or fraud in specific channels.",
+        "group_by": "mode_of_receipt"
+      },
+      {
+        "name": "dak_amount_ratio_to_group_median_by_kpi_bill_type",
+        "op": "ratio_to_group_median",
+        "reason": "Identifies anomalies in amount patterns by bill type, critical for detecting wrong routing or incorrect classification in the flow.",
+        "group_by": "kpi_bill_type"
+      },
+      {
+        "name": "dak_amount_ratio_to_group_median_by_record_status",
+        "op": "ratio_to_group_median",
+        "reason": "Highlights abnormal amounts in records with specific statuses, which may indicate premature closure, rejection, or incorrect status assignment.",
+        "group_by": "record_status"
+      },
+      {
+        "name": "dak_created_hour",
+        "op": "hour",
+        "reason": "Captures time-of-day patterns in dak creation, useful for detecting unusual activity outside normal business hours.",
+        "source": "event_date"
+      },
+      {
+        "name": "dak_created_day_of_week",
+        "op": "day_of_week",
+        "reason": "Reveals day-of-week trends in dak creation, helping detect irregular spikes or drops that may indicate process disruption.",
+        "source": "event_date"
+      }
+    ]
+  },
+  {
+    "table": "bill",
+    "id_column": "id",
+    "amount_column": "amount_claimed",
+    "context_columns": [
+      "fk_dak",
+      "fk_section",
+      "fk_unit",
+      "fk_vendor",
+      "fk_bill_type",
+      "approved",
+      "passed",
+      "record_status",
+      "payment_mode",
+      "month"
+    ],
+    "date_column": "created_at",
+    "why_this_source": "The bill table is a core flow table in the payment workflow, serving as the first stage after dak. It contains key financial and status indicators, with strong FK relationships to upstream and downstream tables. The amount_claimed and created_at are reliable, non-null measures for anomaly detection.",
+    "feature_plan": [
+      {
+        "name": "amount_claimed_ratio_to_group_median_by_bill_type",
+        "op": "ratio_to_group_median",
+        "reason": "Detects outliers in amount claimed within specific bill types, helping identify misclassification or abnormal spending patterns.",
+        "group_by": "fk_bill_type"
+      },
+      {
+        "name": "amount_claimed_ratio_to_group_median_by_unit",
+        "op": "ratio_to_group_median",
+        "reason": "Highlights anomalies in unit-level spending, useful for detecting irregularities in specific units' billing behavior.",
+        "group_by": "fk_unit"
+      },
+      {
+        "name": "amount_claimed_ratio_to_group_median_by_vendor",
+        "op": "ratio_to_group_median",
+        "reason": "Flags unusual billing amounts from specific vendors, which may indicate vendor fraud or incorrect invoicing.",
+        "group_by": "fk_vendor"
+      },
+      {
+        "name": "approved_ratio_to_group_frequency",
+        "op": "group_frequency",
+        "reason": "Measures the frequency of approved bills per bill type; low frequency may indicate bottlenecks or rejection issues.",
+        "group_by": "fk_bill_type"
+      },
+      {
+        "name": "passed_ratio_to_group_frequency",
+        "op": "group_frequency",
+        "reason": "Tracks how often bills are passed per type; low pass rates may indicate systemic rejection or verification issues.",
+        "group_by": "fk_bill_type"
+      }
+    ]
+  },
+  {
+    "table": "gem_bill",
+    "id_column": "id",
+    "amount_column": "bill_amount",
+    "context_columns": [
+      "fk_dak",
+      "fk_section",
+      "fk_unit",
+      "fk_office_id",
+      "fk_central_unit",
+      "vendor_name",
+      "payment_status",
+      "approved",
+      "record_status",
+      "make_type"
+    ],
+    "date_column": "bill_date",
+    "why_this_source": "gem_bill is a first-stage bill table in the payment flow, directly linked to dak via fk_dak. It contains critical financial and status metadata for anomaly detection in routing, approval, and payment progression.",
+    "feature_plan": [
+      {
+        "name": "bill_amount_ratio_to_group_median_by_vendor",
+        "op": "ratio_to_group_median",
+        "reason": "Detects outliers in bill amounts per vendor; sudden spikes may indicate duplicate or fraudulent invoices from a single vendor.",
+        "group_by": "vendor_name"
+      },
+      {
+        "name": "bill_amount_ratio_to_group_median_by_section",
+        "op": "ratio_to_group_median",
+        "reason": "Highlights abnormal spending patterns within a section; deviations may suggest misrouting or unauthorized approvals.",
+        "group_by": "fk_section"
+      },
+      {
+        "name": "bill_amount_ratio_to_group_median_by_unit",
+        "op": "ratio_to_group_median",
+        "reason": "Flags unusual bill values per unit, which could indicate incorrect assignment or anomalies in procurement behavior.",
+        "group_by": "fk_unit"
+      },
+      {
+        "name": "bill_amount_ratio_to_group_median_by_office",
+        "op": "ratio_to_group_median",
+        "reason": "Reveals anomalies in bill amounts by office, useful for detecting regional inconsistencies or misrouting in the payment workflow.",
+        "group_by": "fk_office_id"
+      },
+      {
+        "name": "bill_amount_ratio_to_group_median_by_central_unit",
+        "op": "ratio_to_group_median",
+        "reason": "Monitors spending patterns across central units; deviations may indicate improper allocation or bypassing of approval stages.",
+        "group_by": "fk_central_unit"
+      },
+      {
+        "name": "bill_approved_ratio_to_group_median",
+        "op": "ratio_to_group_median",
+        "reason": "Detects sections with abnormally low or high approval rates, which may indicate systemic issues in review processes or bypassing of checks.",
+        "group_by": "fk_section"
+      },
+      {
+        "name": "bill_payment_status_frequency",
+        "op": "group_frequency",
+        "reason": "Tracks the frequency of each payment status; sudden drops in 'approved' or 'paid' status may indicate bottlenecks or process failures.",
+        "group_by": "payment_status"
+      },
+      {
+        "name": "bill_age_days",
+        "op": "age_days",
+        "reason": "Measures how long a bill has been pending; long delays may indicate stalled processing or missing approvals.",
+        "source": "event_date"
+      }
+    ]
+  },
+  {
+    "table": "cheque_slip",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "approved",
+      "record_status",
+      "fk_dak",
+      "fk_unit",
+      "fk_central_unit",
+      "fk_favour_bank",
+      "fk_office_id"
+    ],
+    "date_column": "cheque_slip_date",
+    "why_this_source": "The cheque_slip table is a critical flow table in the payment workflow, directly linked to dak and subsequent stages. It contains monetary amounts, approval status, and key FKs that track routing and processing. The date column 'cheque_slip_date' is essential for timing analysis, and the presence of",
+    "feature_plan": [
+      {
+        "name": "cheque_slip_approval_ratio",
+        "op": "ratio_to_group_median",
+        "reason": "Detects if approved cheque slips have significantly different average amounts than unapproved ones, which may indicate incorrect routing or manipulation.",
+        "group_by": "approved"
+      },
+      {
+        "name": "cheque_slip_status_frequency",
+        "op": "group_frequency",
+        "reason": "Identifies unusual frequency of certain record statuses (e.g., 'R' or 'D') that may indicate processing bottlenecks or systemic rejection.",
+        "group_by": "record_status"
+      },
+      {
+        "name": "cheque_slip_amount_ratio_to_dak_median",
+        "op": "ratio_to_group_median",
+        "reason": "Compares cheque slip amount to the median amount of its associated dak; large deviations may indicate incorrect or fraudulent linking.",
+        "group_by": "fk_dak"
+      },
+      {
+        "name": "cheque_slip_unit_approval_rate",
+        "op": "group_rank_pct",
+        "reason": "Ranks approval rates by unit to detect units with unusually high or low acceptance, which may signal policy violations or misrouting.",
+        "group_by": "fk_unit"
+      }
+    ]
+  },
+  {
+    "table": "punching_medium",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "fk_dak",
+      "fk_section",
+      "fk_unit",
+      "fk_office_id",
+      "fk_central_unit",
+      "approved",
+      "record_status",
+      "pm_section",
+      "cda_code",
+      "voucher_class",
+      "pm_month_year",
+      "category_head",
+      "code_head",
+      "detail_head",
+      "sign_rc"
+    ],
+    "date_column": "pm_date",
+    "why_this_source": "punching_medium is a key flow table in the payment process, directly linked to dak and later stages. It contains monetary amounts, timestamps, and critical FKs for tracking routing and approval status across organizational units.",
+    "feature_plan": [
+      {
+        "name": "punching_medium_age_days",
+        "op": "age_days",
+        "reason": "measures how long each punching_medium record has been pending since its pm_date, helping detect delays in processing that may indicate bottlenecks or stalled flows.",
+        "source": "event_date"
+      },
+      {
+        "name": "punching_medium_amount_ratio_to_median",
+        "op": "ratio_to_median",
+        "reason": "identifies unusually large or small amounts relative to the overall median, which may indicate errors in data entry, fraud, or misrouting in the payment flow.",
+        "source": "amount"
+      },
+      {
+        "name": "punching_medium_approved_ratio_to_group_median",
+        "op": "ratio_to_group_median",
+        "reason": "compares amount distribution between approved and unapproved records; deviations may indicate inconsistent approval patterns or anomalies in acceptance thresholds.",
+        "group_by": "approved"
+      },
+      {
+        "name": "punching_medium_record_status_frequency",
+        "op": "group_frequency",
+        "reason": "measures the log frequency of records by status; sudden spikes or drops in status counts may indicate system issues or abnormal workflow behavior.",
+        "group_by": "record_status"
+      },
+      {
+        "name": "punching_medium_fk_dak_frequency",
+        "op": "group_frequency",
+        "reason": "identifies dak IDs with unusually high or low numbers of punching_medium records, which may indicate missing or duplicated entries in the flow.",
+        "group_by": "fk_dak"
+      },
+      {
+        "name": "punching_medium_voucher_class_ratio_to_group_median",
+        "op": "ratio_to_group_median",
+        "reason": "detects abnormal amount distributions across voucher classes, which could signal misclassification or incorrect routing in the payment system.",
+        "group_by": "voucher_class"
+      }
+    ]
+  },
+  {
+    "table": "schedule3",
+    "id_column": "id",
+    "amount_column": "schedule3_amount",
+    "context_columns": [
+      "approved",
+      "record_status",
+      "fk_section",
+      "fk_office_id",
+      "transcription_type",
+      "month"
+    ],
+    "date_column": "created_at",
+    "why_this_source": "schedule3 is a critical flow table in the payment pipeline, directly linked to dak and cheque_slip via FKs. It contains monetary amounts and status indicators essential for detecting anomalies in routing, approval, and flow progression.",
+    "feature_plan": [
+      {
+        "name": "schedule3_approved_ratio_to_group_median",
+        "op": "ratio_to_group_median",
+        "reason": "Identifies abnormal approval rates within transcription types, signaling potential workflow breakdowns or inconsistent processing patterns.",
+        "group_by": "transcription_type"
+      },
+      {
+        "name": "schedule3_record_status_frequency",
+        "op": "group_frequency",
+        "reason": "Highlights rare or unexpected record_status values, which may indicate data corruption or non-compliant state transitions in the payment flow.",
+        "group_by": "record_status"
+      }
+    ]
+  },
+  {
+    "table": "ecs",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "record_status",
+      "approved",
+      "fk_dak",
+      "fk_schedule3",
+      "fk_cheque_slip",
+      "fk_office_id",
+      "fk_auditor",
+      "fk_aao",
+      "month"
+    ],
+    "date_column": "created_at",
+    "why_this_source": "The ecs table is a final stage in the payment flow, and its columns reflect key business states (approved, record_status), relationships to prior stages (fk_dak, fk_schedule3, fk_cheque_slip), and operational context (office, auditor, aao, month). The created_at timestamp enables time-based anomaly ",
+    "feature_plan": [
+      {
+        "name": "ratio_to_median_amount",
+        "op": "ratio_to_median",
+        "reason": "Detects unusually high or low payment amounts compared to the overall median, which may indicate fraudulent or erroneous entries in the final payment stage.",
+        "source": "amount"
+      },
+      {
+        "name": "ratio_to_group_median_amount_by_office",
+        "op": "ratio_to_group_median",
+        "reason": "Identifies outliers in payment amounts within specific offices, which could signal inconsistent processing or manipulation at the office level.",
+        "group_by": "fk_office_id"
+      },
+      {
+        "name": "group_frequency_approved_by_month",
+        "op": "group_frequency",
+        "reason": "Measures the frequency of approved payments per month to detect sudden drops or spikes, which may indicate workflow disruptions or data entry issues.",
+        "group_by": "month"
+      },
+      {
+        "name": "ratio_to_quantile_amount_95",
+        "op": "ratio_to_quantile",
+        "reason": "Flags payments significantly larger than the 95th percentile, which may represent high-risk or anomalous transactions in the final payment stage.",
+        "source": "amount",
+        "params": {
+          "quantile": 0.95
+        }
+      },
+      {
+        "name": "group_rank_pct_approved",
+        "op": "group_rank_pct",
+        "reason": "Compares payment amounts within approved vs. unapproved groups to detect if rejected records have unusually high values, suggesting potential rejection bias or manipulation.",
+        "group_by": "approved"
+      }
+    ]
+  },
+  {
+    "table": "cash_requisition",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "fk_dak",
+      "fk_section",
+      "fk_unit",
+      "fk_office_id",
+      "fk_central_unit",
+      "approved",
+      "record_status",
+      "month"
+    ],
+    "date_column": "created_at",
+    "why_this_source": "The cash_requisition table is a key first-stage bill table in the payment flow, directly linked to dak via fk_dak. It contains monetary amounts, approval status, and organizational context, making it critical for detecting anomalies in routing, approval patterns, and flow progression.",
+    "feature_plan": [
+      {
+        "name": "amount_ratio_to_median",
+        "op": "ratio_to_median",
+        "reason": "Identifies unusually high or low amounts compared to the overall median, which may indicate fraudulent or erroneous entries in the cash requisition process.",
+        "source": "amount"
+      },
+      {
+        "name": "approved_ratio_to_group_median",
+        "op": "ratio_to_group_median",
+        "reason": "Compares the amount of approved vs. unapproved requisitions to detect if approved requests are systematically larger or smaller than expected, which could signal approval bypass or rejection bias.",
+        "group_by": "approved"
+      },
+      {
+        "name": "month_frequency_log",
+        "op": "group_frequency",
+        "reason": "Measures the log frequency of requisitions per month to detect abnormal spikes or drops in activity, which may indicate process disruption or data entry errors.",
+        "group_by": "month"
+      },
+      {
+        "name": "fk_section_rank_pct",
+        "op": "group_rank_pct",
+        "reason": "Ranks the amount within each section to detect unusually high or low values per section, which may indicate misrouting or inconsistent handling across units.",
+        "group_by": "fk_section"
+      }
+    ]
+  },
+  {
+    "table": "gem_product",
+    "id_column": "id",
+    "amount_column": "total_value",
+    "context_columns": [
+      "product_code",
+      "product_name",
+      "product_brand",
+      "quantity_unit_type",
+      "offering_type",
+      "sub_category"
+    ],
+    "date_column": "expected_delivery_date",
+    "why_this_source": "The gem_product table contains detailed product-level transaction data with a clear monetary measure (total_value) and key contextual attributes for grouping. It is linked to gem_bill and consignment_detail, making it a critical node in the payment flow from dak to bill to consignment.",
+    "feature_plan": [
+      {
+        "name": "ratio_to_group_median_quantity_ordered",
+        "op": "ratio_to_group_median",
+        "reason": "Identifies abnormal order quantities for a product, which could signal incorrect procurement, fraud, or misrouting in the supply chain.",
+        "group_by": "product_name"
+      },
+      {
+        "name": "group_frequency_product_brand",
+        "op": "group_frequency",
+        "reason": "Highlights product brands with unusually high or low transaction frequency, which may indicate anomalies in supplier selection or procurement patterns.",
+        "group_by": "product_brand"
+      }
+    ]
+  },
+  {
+    "table": "civ_medical_bill",
+    "id_column": "id",
+    "amount_column": "amount_claimed",
+    "context_columns": [
+      "fk_dak",
+      "fk_bill_type",
+      "fk_bill_nature",
+      "fk_unit",
+      "fk_central_unit",
+      "fk_section",
+      "approved",
+      "passed",
+      "record_status",
+      "claim_type",
+      "employee_category",
+      "inpatient_outpatient"
+    ],
+    "date_column": "created_at",
+    "why_this_source": "This table is a key first-stage bill table in the payment flow, directly linked to dak via fk_dak. It contains critical financial and status metadata for anomaly detection in routing, approval, and flow progression.",
+    "feature_plan": [
+      {
+        "name": "amount_claimed_ratio_to_group_median_by_bill_type",
+        "op": "ratio_to_group_median",
+        "reason": "Detects outliers in claim amounts within specific bill types, helping identify misclassification or abnormal billing patterns.",
+        "group_by": "fk_bill_type"
+      },
+      {
+        "name": "amount_claimed_ratio_to_group_median_by_unit",
+        "op": "ratio_to_group_median",
+        "reason": "Highlights anomalies in claims from specific units, which may suggest systemic issues or misuse.",
+        "group_by": "fk_unit"
+      },
+      {
+        "name": "amount_claimed_ratio_to_group_median_by_central_unit",
+        "op": "ratio_to_group_median",
+        "reason": "Reveals unusual claim sizes within central units, useful for detecting anomalies in centralized processing.",
+        "group_by": "fk_central_unit"
+      },
+      {
+        "name": "claim_passed_ratio_to_group_frequency",
+        "op": "group_frequency",
+        "reason": "Measures the frequency of passed claims per bill type, helping detect abnormal rejection or acceptance patterns.",
+        "group_by": "fk_bill_type"
+      },
+      {
+        "name": "claim_approved_ratio_to_group_frequency",
+        "op": "group_frequency",
+        "reason": "Tracks approval frequency by bill type to detect deviations from expected approval rates.",
+        "group_by": "fk_bill_type"
+      }
+    ]
+  },
+  {
+    "table": "civ_paybill",
+    "id_column": "id",
+    "amount_column": "amount_claimed",
+    "context_columns": [
+      "fk_dak",
+      "fk_section",
+      "fk_unit",
+      "fk_bill_type",
+      "record_status",
+      "passed",
+      "verified_audit_checks"
+    ],
+    "date_column": "created_at",
+    "why_this_source": "The civ_paybill table is a key stage in the payment flow, directly linked to dak via fk_dak. It contains financial amounts (amount_claimed), status indicators (passed, record_status), and critical FKs for tracking flow progression. The created_at timestamp enables time-based anomaly detection.",
+    "feature_plan": [
+      {
+        "name": "passed_ratio_to_group_median",
+        "op": "ratio_to_group_median",
+        "reason": "Compares claim amounts between passed and non-passed records; unusually high ratios in passed records may suggest improper approval.",
+        "group_by": "passed"
+      },
+      {
+        "name": "passed_frequency_log",
+        "op": "group_frequency",
+        "reason": "Measures how frequently passed vs. non-passed records appear; sudden drops in passed frequency may indicate workflow disruption.",
+        "group_by": "passed"
+      },
+      {
+        "name": "verified_audit_checks_rank_pct",
+        "op": "group_rank_pct",
+        "reason": "Ranks claim amounts within verified and non-verified groups; high-ranked claims in non-verified groups may indicate bypassed checks.",
+        "group_by": "verified_audit_checks"
+      }
+    ]
+  },
+  {
+    "table": "civ_tada_ltc_bill",
+    "id_column": "id",
+    "amount_column": "amount_claimed",
+    "context_columns": [
+      "fk_dak",
+      "fk_section",
+      "fk_office_id",
+      "fk_central_unit",
+      "fk_unit",
+      "fk_civ_employee",
+      "fk_bill_type",
+      "approved",
+      "passed",
+      "record_status",
+      "payment_record_type",
+      "employee_type",
+      "month",
+      "stage"
+    ],
+    "date_column": "created_at",
+    "why_this_source": "This table is a key stage in the payment flow (dak -> civ_tada_ltc_bill -> cheque_slip), with strong FK relationships to upstream and downstream tables. It contains critical financial and status metadata for anomaly detection in routing, approval, and flow progression.",
+    "feature_plan": [
+      {
+        "name": "claim_amount_ratio_to_group_median_by_unit",
+        "op": "ratio_to_group_median",
+        "reason": "Identifies outliers in claim amounts within specific units, helping detect anomalies in local claim patterns that may suggest misrouting or inconsistent approval standards.",
+        "group_by": "fk_unit"
+      },
+      {
+        "name": "claim_amount_ratio_to_group_median_by_employee_type",
+        "op": "ratio_to_group_median",
+        "reason": "Highlights abnormal claim sizes for specific employee types, which could indicate incorrect classification or policy violations in the TADA/LTC flow.",
+        "group_by": "employee_type"
+      },
+      {
+        "name": "claim_amount_ratio_to_group_median_by_bill_type",
+        "op": "ratio_to_group_median",
+        "reason": "Reveals anomalies in claim amounts by bill type, which is critical for detecting misclassification or incorrect routing in the payment workflow.",
+        "group_by": "fk_bill_type"
+      },
+      {
+        "name": "claim_approved_ratio",
+        "op": "group_frequency",
+        "reason": "Tracks the frequency of approved claims per dak, helping detect cases where a dak has multiple claims but none approved, suggesting possible rejection or routing failure.",
+        "group_by": "fk_dak"
+      },
+      {
+        "name": "claim_passed_ratio",
+        "op": "group_frequency",
+        "reason": "Monitors the proportion of claims passed per dak, identifying daks with unusually low or high pass rates that may indicate systemic issues in approval or rejection patterns.",
+        "group_by": "fk_dak"
+      },
+      {
+        "name": "claim_stage_rank_pct",
+        "op": "group_rank_pct",
+        "reason": "Ranks claim stages within each dak to detect claims that are stuck at low stages or jump ahead unexpectedly, indicating flow disruption or incorrect progression.",
+        "group_by": "fk_dak"
+      }
+    ]
+  },
+  {
+    "table": "echs_medical_bill",
+    "id_column": "id",
+    "amount_column": "amount_claimed",
+    "context_columns": [
+      "fk_dak",
+      "fk_section",
+      "fk_unit",
+      "fk_bpa_vendor",
+      "fk_vendor",
+      "fk_central_unit",
+      "fk_central_beneficiary",
+      "approved",
+      "record_status",
+      "payee_category",
+      "ip_op_emer"
+    ],
+    "date_column": "claim_date",
+    "why_this_source": "This table represents the first stage of the ECHS medical payment flow after the dak. It contains critical financial and routing metadata, including claim amounts, approval status, and FKs to upstream entities like dak and vendor, enabling detection of routing anomalies and flow deviations.",
+    "feature_plan": [
+      {
+        "name": "claim_amount_ratio_to_group_median_by_vendor",
+        "op": "ratio_to_group_median",
+        "reason": "Detects outliers in claim amounts per vendor, helping identify suspicious or inconsistent billing patterns from specific vendors.",
+        "group_by": "fk_bpa_vendor"
+      },
+      {
+        "name": "claim_amount_ratio_to_group_median_by_unit",
+        "op": "ratio_to_group_median",
+        "reason": "Highlights abnormal claim sizes within specific units, which may indicate misrouting, incorrect approvals, or systemic issues in unit-level processing.",
+        "group_by": "fk_unit"
+      },
+      {
+        "name": "claim_amount_ratio_to_group_median_by_central_unit",
+        "op": "ratio_to_group_median",
+        "reason": "Reveals anomalies in claim amounts by central unit, useful for detecting regional or organizational-level irregularities in claim processing.",
+        "group_by": "fk_central_unit"
+      },
+      {
+        "name": "claim_amount_ratio_to_group_median_by_status",
+        "op": "ratio_to_group_median",
+        "reason": "Compares claim amounts across different record statuses (e.g., pending, approved, rejected), flagging unexpected financial patterns in rejected or pending claims.",
+        "group_by": "record_status"
+      },
+      {
+        "name": "claim_amount_ratio_to_group_median_by_approved",
+        "op": "ratio_to_group_median",
+        "reason": "Identifies unusually large or small claims among approved vs. unapproved records, which may indicate incorrect approval decisions or data inconsistencies.",
+        "group_by": "approved"
+      },
+      {
+        "name": "claim_frequency_by_section",
+        "op": "group_frequency",
+        "reason": "Measures the volume of claims per section, identifying sections with abnormally high or low activity, which may indicate misrouting or underutilization.",
+        "group_by": "fk_section"
+      }
+    ]
+  },
+  {
+    "table": "cmp_scroll",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "payment_status",
+      "payment_mode",
+      "cda_code",
+      "sub_office_code",
+      "approved",
+      "record_status"
+    ],
+    "date_column": "scroll_date",
+    "why_this_source": "The cmp_scroll table is a central staging table in the payment flow, capturing scroll-level details with key business attributes like payment_status, payment_mode, and approval state. It links to downstream tables via fk_ecs and fk_usr, making it critical for detecting anomalies in routing and flow ",
+    "feature_plan": [
+      {
+        "name": "scroll_age_days",
+        "op": "age_days",
+        "reason": "Measures how long a record has remained in the scroll stage; unusually long durations may indicate stalled processing or incorrect routing.",
+        "source": "event_date"
+      },
+      {
+        "name": "scroll_payment_status_frequency",
+        "op": "group_frequency",
+        "reason": "Identifies how frequently each payment status occurs; sudden drops in expected statuses (e.g., 'APPROVED') may indicate systemic rejection or bypassing.",
+        "group_by": "payment_status"
+      },
+      {
+        "name": "scroll_payment_mode_ratio_to_median",
+        "op": "ratio_to_median",
+        "reason": "Compares individual scroll amounts to the median amount; outliers may indicate incorrect payment mode assignments or fraudulent activity.",
+        "source": "amount"
+      },
+      {
+        "name": "scroll_approved_ratio_to_group_median",
+        "op": "ratio_to_group_median",
+        "reason": "Compares amounts by approval status; unusually high ratios for unapproved records may suggest improper processing or data leakage.",
+        "group_by": "approved"
+      },
+      {
+        "name": "scroll_cda_code_rank_pct",
+        "op": "group_rank_pct",
+        "reason": "Ranks scroll amounts within each CDA code group; extreme ranks may indicate misrouting or incorrect allocation of funds.",
+        "group_by": "cda_code"
+      },
+      {
+        "name": "scroll_sub_office_code_ratio_to_quantile",
+        "op": "ratio_to_quantile",
+        "reason": "Flags amounts that exceed the 95th percentile within their sub-office group; may indicate unusual or unauthorized payments.",
+        "source": "amount",
+        "params": {
+          "quantile": 0.95
+        }
+      }
+    ]
+  },
+  {
+    "table": "civ_employee_earning",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "fk_civ_paybill",
+      "fk_central_unit",
+      "fk_central_civ_employee",
+      "fk_office_id",
+      "record_status",
+      "month",
+      "code_head"
+    ],
+    "date_column": "created_at",
+    "why_this_source": "This table contains employee earning records linked to paybills and central entities, with a clear monetary amount and timestamp. It is a key node in the payment flow, especially for tracking movement from paybill to later stages.",
+    "feature_plan": [
+      {
+        "name": "earning_amount_ratio_to_median",
+        "op": "ratio_to_median",
+        "reason": "Detects unusually high or low earnings within a specific paybill, which may indicate incorrect routing, duplicate entries, or data entry errors in the payment flow.",
+        "source": "amount"
+      },
+      {
+        "name": "earning_amount_ratio_to_group_median",
+        "op": "ratio_to_group_median",
+        "reason": "Identifies outliers in earnings per central unit, which could signal anomalies in payroll processing or misclassification of employees within units.",
+        "group_by": "fk_central_unit"
+      },
+      {
+        "name": "earning_amount_rank_pct",
+        "op": "rank_pct",
+        "reason": "Measures how an individual employee's earning compares within their own record history; sudden spikes may indicate incorrect or fraudulent entries.",
+        "source": "amount"
+      },
+      {
+        "name": "earning_month_frequency",
+        "op": "group_frequency",
+        "reason": "Monitors the volume of earnings per month; sudden drops or spikes may indicate missing data, system issues, or irregular processing patterns.",
+        "group_by": "month"
+      },
+      {
+        "name": "earning_record_status_ratio",
+        "op": "group_frequency",
+        "reason": "Tracks the distribution of record statuses; unexpected changes in status frequency may indicate incorrect approval or rejection patterns.",
+        "group_by": "record_status"
+      }
+    ]
+  },
+  {
+    "table": "civ_employee_recovery",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "record_status",
+      "fk_civ_paybill",
+      "fk_pay_code",
+      "fk_office_id",
+      "fk_central_unit",
+      "fk_central_civ_employee",
+      "month",
+      "code_head"
+    ],
+    "date_column": "created_at",
+    "why_this_source": "This table tracks employee recovery records linked to paybills and central employee data; it is part of the payment flow after the initial bill stage. The presence of FKs to paybill and central entities enables flow tracking. The amount and created_at are critical for anomaly detection in timing and",
+    "feature_plan": [
+      {
+        "name": "amount_ratio_to_median",
+        "op": "ratio_to_median",
+        "reason": "Detects unusually high or low recovery amounts compared to the overall median, which may indicate incorrect recovery values or fraud.",
+        "source": "amount"
+      },
+      {
+        "name": "amount_ratio_to_group_median_by_pay_code",
+        "op": "ratio_to_group_median",
+        "reason": "Identifies recovery amounts that deviate significantly from the typical amount for a given pay code, which may indicate misclassification or incorrect processing.",
+        "group_by": "fk_pay_code"
+      },
+      {
+        "name": "amount_ratio_to_group_median_by_central_unit",
+        "op": "ratio_to_group_median",
+        "reason": "Highlights anomalies in recovery amounts per central unit, which could signal inconsistent application of recovery rules or data entry errors.",
+        "group_by": "fk_central_unit"
+      },
+      {
+        "name": "amount_ratio_to_group_median_by_office",
+        "op": "ratio_to_group_median",
+        "reason": "Reveals outliers in recovery amounts by office, potentially indicating local policy deviations or incorrect approvals.",
+        "group_by": "fk_office_id"
+      },
+      {
+        "name": "amount_ratio_to_group_median_by_month",
+        "op": "ratio_to_group_median",
+        "reason": "Detects abnormal recovery volumes in specific months, which may reflect seasonal anomalies or data processing errors.",
+        "group_by": "month"
+      },
+      {
+        "name": "created_at_age_days",
+        "op": "age_days",
+        "reason": "Measures how long a recovery record has been pending since creation; long delays may indicate bottlenecks or stalled processing.",
+        "source": "event_date"
+      },
+      {
+        "name": "created_at_hour",
+        "op": "hour",
+        "reason": "Identifies unusual timing of recovery record creation (e.g., late-night entries), which may suggest automated or unauthorized entries.",
+        "source": "event_date"
+      },
+      {
+        "name": "created_at_day_of_week",
+        "op": "day_of_week",
+        "reason": "Detects non-standard creation days (e.g., weekends), which may indicate off-cycle processing or system errors.",
+        "source": "event_date"
+      },
+      {
+        "name": "record_status_frequency",
+        "op": "group_frequency",
+        "reason": "Measures the relative frequency of different record statuses; sudden shifts may indicate processing issues or systemic rejection patterns.",
+        "group_by": "record_status"
+      }
+    ]
+  },
+  {
+    "table": "civ_emp_allowances",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "record_status",
+      "approved",
+      "fk_central_civ_employee",
+      "fk_office_id",
+      "fk_pay_code",
+      "code_head"
+    ],
+    "date_column": "created_date",
+    "why_this_source": "This table contains employee allowance records with financial amounts, approval status, and key identifiers for tracking flow through payroll and payment systems. It is a critical node in the payment flow where anomalies in approval, status, or amount can indicate routing errors or invalid entries.",
+    "feature_plan": [
+      {
+        "name": "amount_ratio_to_median",
+        "op": "ratio_to_median",
+        "reason": "Detects unusually high or low allowance amounts compared to the overall median, which may indicate incorrect entries or fraudulent claims.",
+        "source": "amount"
+      },
+      {
+        "name": "approved_ratio_to_group_median",
+        "op": "ratio_to_group_median",
+        "reason": "Compares allowance amounts by approval status to detect if approved records have significantly different values than unapproved ones, which could indicate improper approval patterns.",
+        "group_by": "approved"
+      },
+      {
+        "name": "record_status_group_frequency",
+        "op": "group_frequency",
+        "reason": "Measures the log frequency of records per status to detect abnormal spikes or drops in record counts, which may indicate data corruption or missing stages in the workflow.",
+        "group_by": "record_status"
+      },
+      {
+        "name": "fk_central_civ_employee_group_rank_pct",
+        "op": "group_rank_pct",
+        "reason": "Ranks allowance amounts within each employee to detect outliers in individual compensation, which may indicate incorrect or duplicate entries.",
+        "group_by": "fk_central_civ_employee"
+      },
+      {
+        "name": "fk_office_id_group_rank_pct",
+        "op": "group_rank_pct",
+        "reason": "Ranks allowance amounts by office to detect abnormal spending patterns per office, which may indicate misrouting or policy violations.",
+        "group_by": "fk_office_id"
+      }
+    ]
+  },
+  {
+    "table": "recoveries",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "fk_dak",
+      "fk_recovery_code",
+      "fk_office_id",
+      "fk_central_vendor",
+      "fk_vendor",
+      "record_status",
+      "recovery_month",
+      "recovery_rule"
+    ],
+    "date_column": "created_at",
+    "why_this_source": "The recoveries table tracks post-approval recovery actions tied to daks, with strong FK relationships to key workflow tables. It contains a numeric amount, a creation timestamp, and multiple context columns that enable tracking of recovery patterns across offices, vendors, and recovery rules.",
+    "feature_plan": [
+      {
+        "name": "recovery_amount_ratio_to_median",
+        "op": "ratio_to_median",
+        "reason": "Identifies recoveries with unusually high or low amounts compared to the overall median, which may indicate incorrect recovery values or fraud.",
+        "source": "amount"
+      },
+      {
+        "name": "recovery_amount_ratio_to_group_median_by_office",
+        "op": "ratio_to_group_median",
+        "reason": "Detects outliers in recovery amounts per office, helping identify abnormal recovery behavior in specific offices.",
+        "group_by": "fk_office_id"
+      },
+      {
+        "name": "recovery_amount_ratio_to_group_median_by_vendor",
+        "op": "ratio_to_group_median",
+        "reason": "Highlights recoveries with extreme amounts for specific vendors, which may suggest incorrect vendor assignments or anomalies in vendor recovery patterns.",
+        "group_by": "fk_vendor"
+      },
+      {
+        "name": "recovery_amount_ratio_to_group_median_by_recovery_rule",
+        "op": "ratio_to_group_median",
+        "reason": "Reveals anomalies in recovery amounts grouped by recovery rule, which can flag misapplied rules or incorrect recovery logic.",
+        "group_by": "recovery_rule"
+      },
+      {
+        "name": "recovery_frequency_by_month",
+        "op": "group_frequency",
+        "reason": "Captures the log frequency of recoveries per month, enabling detection of unusual spikes or drops in recovery activity that may indicate process failures or data issues.",
+        "group_by": "recovery_month"
+      },
+      {
+        "name": "recovery_rank_pct_by_office",
+        "op": "group_rank_pct",
+        "reason": "Ranks recovery amounts within each office to detect unusually high or low recoveries, which may indicate misrouting or incorrect approvals.",
+        "group_by": "fk_office_id"
+      }
+    ]
+  }
+]
