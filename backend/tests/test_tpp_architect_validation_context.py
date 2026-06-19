@@ -1,10 +1,6 @@
-import pytest
 import json
 
-llama_architect = pytest.importorskip(
-    "llama_architect",
-    reason="llama_architect runtime deps are not installed",
-)
+import tpp_architect
 
 
 def test_parse_validation_markdown_table_rows(tmp_path):
@@ -23,7 +19,7 @@ def test_parse_validation_markdown_table_rows(tmp_path):
         encoding="utf-8",
     )
 
-    rules = llama_architect.parse_validation_markdown(path)
+    rules = tpp_architect.parse_validation_markdown(path)
 
     assert rules == [
         {
@@ -56,9 +52,9 @@ def test_validation_context_includes_direct_fk_related_rules(monkeypatch):
             "validation": "Required for normal third party bills.",
         },
     )
-    monkeypatch.setattr(llama_architect, "load_validation_context_rules", lambda: rules)
+    monkeypatch.setattr(tpp_architect, "load_validation_context_rules", lambda: rules)
 
-    context = llama_architect.validation_context_for_table_detail(
+    context = tpp_architect.validation_context_for_table_detail(
         {
             "table": "bill",
             "relationship_context": [{"referenced_table": "dak"}],
@@ -78,15 +74,15 @@ def test_architect_schema_pruning_keeps_only_third_party_tables():
         {"table": "vendor", "column": "id", "data_type": "integer", "key": "PK", "references": "None"},
     ]
 
-    pruned = llama_architect.prune_schema_rows_to_allowed_relationships(rows)
+    pruned = tpp_architect.prune_schema_rows_to_allowed_relationships(rows)
 
     assert {row["table"] for row in pruned} == {"dak", "bill", "cheque_slip"}
 
 
 def test_table_feature_prompt_prioritizes_forensic_signals_over_missing_columns(monkeypatch):
-    monkeypatch.setattr(llama_architect, "validation_context_for_table_detail", lambda _: [])
+    monkeypatch.setattr(tpp_architect, "validation_context_for_table_detail", lambda _: [])
 
-    prompt = llama_architect.build_table_feature_prompt(
+    prompt = tpp_architect.build_table_feature_prompt(
         {
             "table": "bill",
             "row_count": 100,
@@ -113,6 +109,10 @@ def test_table_feature_prompt_prioritizes_forensic_signals_over_missing_columns(
     assert "Government Accounts, Defence Audit, Payment Flow, and Forensic Analytics architect" in prompt_text
     assert "dak.fk_section IN (142, 228, 265, 383)" in prompt_text
     assert "dak, bill, cheque_slip, punching_medium, schedule3, ecs" in prompt_text
+    assert "runtime_workflow_feature" in prompt_text
+    assert "wf_bill_count" in prompt_text
+    assert "numeric_column" in prompt_text
+    assert "date_gap_days" in prompt_text
     assert "broken flow" in prompt_text
     assert "skipped stages" in prompt_text
     assert "downstream without upstream" in prompt_text

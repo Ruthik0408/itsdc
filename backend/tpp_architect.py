@@ -8,7 +8,11 @@ from pathlib import Path
 
 import psycopg2
 from psycopg2 import sql
-from openai import OpenAI
+
+try:
+    from openai import OpenAI
+except ModuleNotFoundError:
+    OpenAI = None
 
 from db_config import get_database_settings, get_llama_settings
 from feature_dsl import get_feature_contract, validate_feature_plan
@@ -18,10 +22,10 @@ from table_exclusions import DEFAULT_BUSINESS_PRIORITY_TABLES, EXCLUDED_TABLES, 
 BACKEND_DIR = Path(__file__).resolve().parent
 
 SCHEMA_FILE = str(BACKEND_DIR / "tulip2.0_schema.md")
-OUTPUT_FILE = str(BACKEND_DIR / "anomaly_guide.md")
-SOURCE_CONFIG_FILE = str(BACKEND_DIR / "anomaly_sources.json")
-LAST_BAD_RESPONSE_FILE = BACKEND_DIR / "last_llama_architect_response.txt"
-SCHEMA_CANDIDATE_AUDIT_FILE = BACKEND_DIR / "llama_schema_candidates.json"
+OUTPUT_FILE = str(BACKEND_DIR / "tpp_anomaly_guide.md")
+SOURCE_CONFIG_FILE = str(BACKEND_DIR / "tpp_anomaly_sources.json")
+LAST_BAD_RESPONSE_FILE = BACKEND_DIR / "tpp_last_bad_llm_response.txt"
+SCHEMA_CANDIDATE_AUDIT_FILE = BACKEND_DIR / "tpp_schema_candidates.json"
 ARCHITECT_VERSION = "2026-06-18-validation-context-v9"
 DEFAULT_THIRD_PARTY_ARCHITECT_TABLES = (
     *DEFAULT_BUSINESS_PRIORITY_TABLES,
@@ -57,6 +61,21 @@ MAX_CONTEXT_FK_COLUMNS = int(os.getenv("LLAMA_MAX_CONTEXT_FK_COLUMNS", "6"))
 MAX_VALIDATION_RULES_PER_TABLE = int(os.getenv("LLAMA_MAX_VALIDATION_RULES_PER_TABLE", "60"))
 MAX_VALIDATION_RULES_PER_PROMPT = int(os.getenv("LLAMA_MAX_VALIDATION_RULES_PER_PROMPT", "100"))
 ALWAYS_INCLUDE_COLUMN_NAMES = ("approved", "record_status")
+THIRD_PARTY_WORKFLOW_STAGES = (
+    "bill",
+    "cheque_slip",
+    "punching_medium",
+    "schedule3",
+    "ecs",
+)
+WORKFLOW_FEATURE_PREFIX = "wf_"
+WORKFLOW_FEATURE_SUFFIXES = (
+    "count",
+    "active_forward_count",
+    "stopped_count",
+    "amount_sum",
+    "latest_date",
+)
 def get_architect_source_tables() -> tuple[str, ...]:
     configured = os.getenv("ARCHITECT_SOURCE_TABLES")
     raw_tables = configured if configured is not None else ",".join(DEFAULT_THIRD_PARTY_ARCHITECT_TABLES)
@@ -76,6 +95,27 @@ BUSINESS_PRIORITY_TABLES = get_architect_source_tables()
 
 def is_architect_source_table(table_name: str) -> bool:
     return table_name in set(BUSINESS_PRIORITY_TABLES)
+
+
+def workflow_feature_alias(table: str, suffix: str) -> str:
+    return f"{WORKFLOW_FEATURE_PREFIX}{table}_{suffix}"
+
+
+def workflow_feature_columns_for_llm() -> list[str]:
+    columns = []
+    for table in THIRD_PARTY_WORKFLOW_STAGES:
+        for suffix in WORKFLOW_FEATURE_SUFFIXES:
+            data_type = "timestamp without time zone" if suffix == "latest_date" else "double precision"
+            columns.append(f"{workflow_feature_alias(table, suffix)}:{data_type}:runtime_workflow_feature:nn=100%")
+    return columns
+
+
+def workflow_feature_column_names() -> set[str]:
+    return {
+        workflow_feature_alias(table, suffix)
+        for table in THIRD_PARTY_WORKFLOW_STAGES
+        for suffix in WORKFLOW_FEATURE_SUFFIXES
+    }
 
 
 CONTEXT_COLUMN_PRIORITY_TERMS = (
@@ -125,15 +165,30 @@ DATE_DATA_TYPES = (
 
 
 llama_settings = get_llama_settings()
-client = OpenAI(
-    base_url=llama_settings["base_url"],
-    api_key=llama_settings["api_key"],
-)
 LLAMA_MODEL = llama_settings["model"]
+client = None
+ARCHITECT_LOG_PREFIX = "tpp_architect"
+
+
+def get_llama_client():
+    global client
+    if OpenAI is None:
+        raise RuntimeError("The openai package is required to run the LLM architect.")
+    if client is None:
+        client = OpenAI(
+            base_url=llama_settings["base_url"],
+            api_key=llama_settings["api_key"],
+        )
+    return client
 
 
 def echo(message):
-    print(f"[llama_architect] {message}")
+    print(f"[{ARCHITECT_LOG_PREFIX}] {message}")
+
+
+def set_architect_log_prefix(prefix: str) -> None:
+    global ARCHITECT_LOG_PREFIX
+    ARCHITECT_LOG_PREFIX = str(prefix).strip() or "tpp_architect"
 
 
 def configured_validation_context_paths() -> tuple[Path, ...]:
@@ -965,7 +1020,7 @@ def parse_llama_json_object(raw_text):
         payload = json.loads(json_text)
 
     if not isinstance(payload, dict):
-        raise RuntimeError("LLM architecture output must be a JSON object.")
+        raise RuntimeError("TPP architecture output must be a JSON object.")
     return payload
 
 
@@ -974,7 +1029,8 @@ def save_bad_llama_response(raw_text):
         output_file.write(raw_text)
 
 
-def create_llama_architecture_completion(prompt):
+def create_tpp_architecture_completion(prompt):
+    llama_client = get_llama_client()
     messages = [
         {
             "role": "system",
@@ -986,7 +1042,7 @@ def create_llama_architecture_completion(prompt):
         {"role": "user", "content": json.dumps(prompt, indent=2)},
     ]
     try:
-        return client.chat.completions.create(
+        return llama_client.chat.completions.create(
             model=LLAMA_MODEL,
             messages=messages,
             temperature=0,
@@ -997,7 +1053,7 @@ def create_llama_architecture_completion(prompt):
             "JSON response_format was not accepted by the LLM endpoint; "
             f"retrying without it. Detail: {type(exc).__name__}: {exc}"
         )
-        return client.chat.completions.create(
+        return llama_client.chat.completions.create(
             model=LLAMA_MODEL,
             messages=messages,
             temperature=0,
@@ -1048,6 +1104,7 @@ FORENSIC_FEATURE_PRIORITIES = (
     {
         "signal": "same_vendor_same_item_or_invoice_different_rate",
         "design_hint": (
+            "Detect same vendor/item/context paid at different rates. "
             "Where item, invoice, vendor, bill type, supply order, contract, unit, GST, "
             "or narration columns are visible, compare amount against vendor/context group "
             "medians and use duplicate_distinct to flag same identity with different "
@@ -1092,6 +1149,8 @@ FORENSIC_FEATURE_PRIORITIES = (
 def build_table_feature_prompt(table_detail):
     table_name = table_detail["table"]
     full_usable_columns = [compact_column_for_llama(column) for column in table_detail["columns"]]
+    if table_name == "dak":
+        full_usable_columns.extend(workflow_feature_columns_for_llm())
     validation_context = validation_context_for_table_detail(table_detail)
 
     return {
@@ -1109,7 +1168,7 @@ def build_table_feature_prompt(table_detail):
             "Design features for column-to-column contradictions, row-to-row repeated patterns, table-to-table "
             "flow breaks, skipped stages, status/payment contradictions, approval/downstream contradictions, "
             "rejection/payment contradictions, amount inconsistencies, date sequence violations, duplicate "
-            "invoice/payment behavior, multiplicity, weak final payment trails, abnormal stage timing, and "
+            "invoice/payment behavior, invoice splitting, multiplicity, weak final payment trails, abnormal stage timing, and "
             "records that look normal alone but suspicious when compared with related rows."
         ),
         "strict_rules": [
@@ -1120,6 +1179,7 @@ def build_table_feature_prompt(table_detail):
             "Do not create final labels like fraud=true.",
             "Do not require LLM reasoning during scan time.",
             "Every feature must be deterministic, numeric, safe for null values, and explainable to an auditor.",
+            "For dak only, runtime_workflow_feature columns are precomputed numeric/date features from real fk_dak relationships across bill, cheque_slip, punching_medium, schedule3, and ecs; you may use them in context_columns and feature_plan.",
             "Do not convert validation_context into free-form SQL or boolean formulas; translate it into supported feature_contract operations only.",
             "The amount_column must be a real numeric money/value column from full_usable_columns; if no money-named column exists, choose the best non-PK/non-FK numeric measure.",
             "The id_column should normally be the primary key column if present.",
@@ -1129,6 +1189,8 @@ def build_table_feature_prompt(table_detail):
             "Highest priority order: broken flow, skipped stages, downstream without upstream, rejected/invalid moving forward, approved/valid not moving forward, payment without approval trail, date sequence contradiction, amount relationship contradiction, duplicate invoice/payment pattern, abnormal row-to-row repetition, multiplicity, final ECS/payment with weak trail.",
             "Start feature_plan with forensic identity/amount/tax features when visible columns allow them; do not fill the plan with is_missing features.",
             "Use duplicate_key for repeated invoice/reference/FIS/DAK/bill/vendor/beneficiary/payment identities.",
+            "Use numeric_column for workflow count, active_forward_count, stopped_count, and amount_sum runtime workflow columns such as wf_bill_count so IsolationForest receives those values directly.",
+            "Use date_gap_days with runtime workflow latest_date columns to express timing gaps between stages.",
             "Use duplicate_normalized_key when invoice/reference/FIS/DAK/bill/vendor/beneficiary/payment identifiers may differ only by spaces, punctuation, case, or formatting.",
             "Use duplicate_distinct when the same identity appears across different DAKs, beneficiaries, units, dates, invoice numbers, amounts, or vendors.",
             "Use rolling_window_count and rolling_window_amount_sum with params.window_days when vendor/invoice/reference/DAK/bill/payment identities repeat across nearby dates; this is the preferred expression for possible bill splitting.",
@@ -1197,7 +1259,7 @@ def ask_llama_to_plan_table(table_detail):
 
     prompt = build_table_feature_prompt(table_detail)
 
-    response = create_llama_architecture_completion(prompt)
+    response = create_tpp_architecture_completion(prompt)
     raw_text = response.choices[0].message.content.strip()
     echo(f"Raw LLM feature-plan response length for {table_name}: {len(raw_text)} characters.")
 
@@ -1220,6 +1282,9 @@ def ask_llama_to_plan_table(table_detail):
 
 def filter_source_to_visible_columns(source, table_detail):
     visible_columns = {column["column"] for column in table_detail["columns"]}
+    selectable_columns = set(visible_columns)
+    if table_detail["table"] == "dak":
+        selectable_columns.update(workflow_feature_column_names())
     if source.get("id_column") not in visible_columns or source.get("amount_column") not in visible_columns:
         return None
     if source.get("date_column") and source["date_column"] not in visible_columns:
@@ -1227,7 +1292,7 @@ def filter_source_to_visible_columns(source, table_detail):
     source["context_columns"] = [
         column
         for column in source.get("context_columns", [])
-        if isinstance(column, str) and column in visible_columns
+        if isinstance(column, str) and column in selectable_columns
     ]
     return source
 
@@ -1413,9 +1478,9 @@ def repair_architecture_payload(payload, schema_rows, validation_error):
         "schema": schema,
     }
 
-    response = create_llama_architecture_completion(prompt)
+    response = create_tpp_architecture_completion(prompt)
     raw_text = response.choices[0].message.content.strip()
-    echo(f"Raw repaired LLM architecture response length: {len(raw_text)} characters.")
+    echo(f"Raw repaired TPP architecture response length: {len(raw_text)} characters.")
 
     try:
         repaired_payload = parse_llama_json_object(raw_text)
@@ -1461,6 +1526,9 @@ def validate_architecture(payload, schema_rows):
             continue
 
         columns = {column["column"] for column in tables[table]}
+        selectable_columns = set(columns)
+        if table == "dak":
+            selectable_columns.update(workflow_feature_column_names())
         id_column = str(raw_source.get("id_column", "")).strip()
         amount_column = str(raw_source.get("amount_column", "")).strip()
         date_column = raw_source.get("date_column")
@@ -1477,7 +1545,7 @@ def validate_architecture(payload, schema_rows):
 
         context_columns = []
         for column in raw_source.get("context_columns", []):
-            if isinstance(column, str) and column in columns and column not in context_columns:
+            if isinstance(column, str) and column in selectable_columns and column not in context_columns:
                 context_columns.append(column)
 
         source_for_validation = {
@@ -1584,12 +1652,12 @@ def run_architect_loop():
     try:
         runtime_sources = validate_architecture(payload, schema_rows)
     except RuntimeError as exc:
-        echo(f"Initial LLM architecture failed validation: {exc}")
+        echo(f"Initial TPP architecture failed validation: {exc}")
         payload = repair_architecture_payload(payload, schema_rows, exc)
         runtime_sources = validate_architecture(payload, schema_rows)
     write_source_config(runtime_sources)
     write_anomaly_guide(payload, runtime_sources)
-    echo("Done. anomaly_sources.json and anomaly_guide.md were generated from LLM selections.")
+    echo("Done. tpp_anomaly_sources.json and tpp_anomaly_guide.md were generated from LLM selections.")
 
 
 if __name__ == "__main__":

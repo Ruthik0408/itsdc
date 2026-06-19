@@ -1,0 +1,1537 @@
+[
+  {
+    "table": "dak",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "fk_section",
+      "fk_dak_type",
+      "fk_office_id",
+      "fk_central_unit",
+      "fk_unit",
+      "reference_no",
+      "dakid_no",
+      "list_no",
+      "month_year",
+      "dak_year",
+      "subject",
+      "kpi_bill_type",
+      "mode_of_receipt",
+      "security_grading",
+      "gpf_pran_ppan_no",
+      "gem_bill",
+      "reason",
+      "bill_no"
+    ],
+    "date_column": "list_date",
+    "why_this_source": "dak is the root table for GEM_BILLS flow; it links to gem_bill and all downstream payment stages via fk_dak. It contains essential context (section, date, amount, reference, unit, office, and identity) for anomaly detection across the GEM payment chain. Only GEM_BILLS with fk_section in [113,127,128,129,219,348] are relevant.",
+    "feature_plan": [
+      {
+        "name": "has_gem_bill",
+        "op": "is_missing",
+        "reason": "Detects DAKs marked as GEM_BILLS but missing the gem_bill linkage, indicating potential misclassification or flow break.",
+        "column": "gem_bill"
+      },
+      {
+        "name": "is_gem_section",
+        "op": "equals",
+        "reason": "Ensures the DAK belongs to a valid GEM section (113).",
+        "column": "fk_section",
+        "value": "113"
+      },
+      {
+        "name": "is_gem_section_127",
+        "op": "equals",
+        "reason": "Ensures the DAK belongs to a valid GEM section (127).",
+        "column": "fk_section",
+        "value": "127"
+      },
+      {
+        "name": "is_gem_section_128",
+        "op": "equals",
+        "reason": "Ensures the DAK belongs to a valid GEM section (128).",
+        "column": "fk_section",
+        "value": "128"
+      },
+      {
+        "name": "is_gem_section_129",
+        "op": "equals",
+        "reason": "Ensures the DAK belongs to a valid GEM section (129).",
+        "column": "fk_section",
+        "value": "129"
+      },
+      {
+        "name": "is_gem_section_219",
+        "op": "equals",
+        "reason": "Ensures the DAK belongs to a valid GEM section (219).",
+        "column": "fk_section",
+        "value": "219"
+      },
+      {
+        "name": "is_gem_section_348",
+        "op": "equals",
+        "reason": "Ensures the DAK belongs to a valid GEM section (348).",
+        "column": "fk_section",
+        "value": "348"
+      },
+      {
+        "name": "dakid_no_valid_prefix",
+        "op": "starts_with",
+        "reason": "Ensures DAK ID starts with 'G' as per GEM convention; flags non-compliant IDs.",
+        "column": "dakid_no",
+        "value": "G"
+      },
+      {
+        "name": "dakid_no_missing",
+        "op": "is_missing",
+        "reason": "Detects missing DAK ID, a critical identifier for traceability and audit.",
+        "column": "dakid_no"
+      },
+      {
+        "name": "reference_no_normalized",
+        "op": "duplicate_normalized_key",
+        "reason": "Detects duplicate or normalized duplicate reference numbers across DAKs, indicating possible invoice splitting or reuse.",
+        "columns": [
+          "reference_no"
+        ]
+      },
+      {
+        "name": "reference_no_duplicate_distinct",
+        "op": "duplicate_distinct",
+        "reason": "Flags same reference_no used across different units, suggesting possible fraud or split billing.",
+        "columns": [
+          "reference_no"
+        ],
+        "distinct_column": "fk_unit"
+      },
+      {
+        "name": "reference_no_duplicate_distinct_vendor",
+        "op": "duplicate_distinct",
+        "reason": "Detects same reference_no used with different units, indicating potential vendor or order identity manipulation.",
+        "columns": [
+          "reference_no"
+        ],
+        "distinct_column": "fk_unit"
+      },
+      {
+        "name": "bill_no_normalized",
+        "op": "duplicate_normalized_key",
+        "reason": "Detects duplicate or normalized duplicate bill numbers, a red flag for fake or reused bill identities.",
+        "columns": [
+          "bill_no"
+        ]
+      },
+      {
+        "name": "bill_no_duplicate_distinct",
+        "op": "duplicate_distinct",
+        "reason": "Flags same bill_no used across different units, indicating possible identity fraud or splitting.",
+        "columns": [
+          "bill_no"
+        ],
+        "distinct_column": "fk_unit"
+      },
+      {
+        "name": "kpi_bill_type_valid",
+        "op": "equals",
+        "reason": "Validates that KPI bill type is 'GEM' for GEM BILLS; flags misclassification.",
+        "column": "kpi_bill_type",
+        "value": "GEM"
+      },
+      {
+        "name": "kpi_bill_type_missing",
+        "op": "is_missing",
+        "reason": "Detects missing KPI bill type, a key classification for GEM flow.",
+        "column": "kpi_bill_type"
+      },
+      {
+        "name": "gem_bill_flag_true",
+        "op": "equals",
+        "reason": "Confirms that the DAK is explicitly marked as a GEM bill; flags false negatives.",
+        "column": "gem_bill",
+        "value": "True"
+      },
+      {
+        "name": "gem_bill_flag_false",
+        "op": "equals",
+        "reason": "Flags DAKs incorrectly marked as non-GEM bills when they belong to GEM sections.",
+        "column": "gem_bill",
+        "value": "False"
+      },
+      {
+        "name": "dak_year_valid",
+        "op": "starts_with",
+        "reason": "Ensures DAK year starts with '20' (e.g., 2023, 2024), indicating valid fiscal year format.",
+        "column": "dak_year",
+        "value": "20"
+      },
+      {
+        "name": "dak_year_missing",
+        "op": "is_missing",
+        "reason": "Detects missing DAK year, a key fiscal context for GEM flow.",
+        "column": "dak_year"
+      },
+      {
+        "name": "month_year_valid",
+        "op": "starts_with",
+        "reason": "Ensures month_year starts with '20' (e.g., 2023-04), indicating valid fiscal period.",
+        "column": "month_year",
+        "value": "20"
+      },
+      {
+        "name": "month_year_missing",
+        "op": "is_missing",
+        "reason": "Detects missing month_year, a key temporal context for GEM flow.",
+        "column": "month_year"
+      },
+      {
+        "name": "fk_unit_missing",
+        "op": "is_missing",
+        "reason": "Detects missing unit ID, a critical context for vendor and budget tracking.",
+        "column": "fk_unit"
+      },
+      {
+        "name": "fk_central_unit_missing",
+        "op": "is_missing",
+        "reason": "Detects missing central unit ID, a key organizational context.",
+        "column": "fk_central_unit"
+      },
+      {
+        "name": "fk_office_id_missing",
+        "op": "is_missing",
+        "reason": "Detects missing office ID, a key administrative context.",
+        "column": "fk_office_id"
+      },
+      {
+        "name": "fk_dak_type_missing",
+        "op": "is_missing",
+        "reason": "Detects missing DAK type, a key classification for flow validation.",
+        "column": "fk_dak_type"
+      },
+      {
+        "name": "mode_of_receipt_valid",
+        "op": "equals",
+        "reason": "Validates that mode of receipt is 'Online' for GEM BILLS; flags non-compliant entries.",
+        "column": "mode_of_receipt",
+        "value": "Online"
+      },
+      {
+        "name": "mode_of_receipt_missing",
+        "op": "is_missing",
+        "reason": "Detects missing mode of receipt, a key operational context.",
+        "column": "mode_of_receipt"
+      },
+      {
+        "name": "security_grading_valid",
+        "op": "equals",
+        "reason": "Validates that security grading is 'Confidential' for GEM BILLS; flags non-compliant entries.",
+        "column": "security_grading",
+        "value": "Confidential"
+      },
+      {
+        "name": "security_grading_missing",
+        "op": "is_missing",
+        "reason": "Detects missing security grading, a key compliance context.",
+        "column": "security_grading"
+      },
+      {
+        "name": "gpf_pran_ppan_no_valid",
+        "op": "starts_with",
+        "reason": "Ensures GPF/PRAN/PPAN number starts with 'G' for GEM BILLS; flags invalid format.",
+        "column": "gpf_pran_ppan_no",
+        "value": "G"
+      },
+      {
+        "name": "gpf_pran_ppan_no_missing",
+        "op": "is_missing",
+        "reason": "Detects missing GPF/PRAN/PPAN number, a key identity context.",
+        "column": "gpf_pran_ppan_no"
+      },
+      {
+        "name": "reason_missing",
+        "op": "is_missing",
+        "reason": "Detects missing reason for DAK, a key audit trail element.",
+        "column": "reason"
+      },
+      {
+        "name": "amount_missing",
+        "op": "is_missing",
+        "reason": "Detects missing amount, a critical financial value for GEM flow.",
+        "column": "amount"
+      },
+      {
+        "name": "amount_high_outlier",
+        "op": "ratio_to_group_median",
+        "reason": "Flags DAKs with amount significantly higher than median for the same unit, indicating possible overpayment or anomaly.",
+        "group_by": "fk_unit"
+      },
+      {
+        "name": "amount_high_outlier_section",
+        "op": "ratio_to_group_median",
+        "reason": "Flags DAKs with amount significantly higher than median for the same section, indicating possible threshold splitting or fraud.",
+        "group_by": "fk_section"
+      },
+      {
+        "name": "amount_high_outlier_office",
+        "op": "ratio_to_group_median",
+        "reason": "Flags DAKs with amount significantly higher than median for the same office, indicating possible anomaly.",
+        "group_by": "fk_office_id"
+      },
+      {
+        "name": "list_no_missing",
+        "op": "is_missing",
+        "reason": "Detects missing list_no, a key sequential identifier.",
+        "column": "list_no"
+      },
+      {
+        "name": "dakid_no_duplicate_distinct",
+        "op": "duplicate_distinct",
+        "reason": "Flags same DAK ID used across different units, indicating possible identity fraud or reuse.",
+        "columns": [
+          "dakid_no"
+        ],
+        "distinct_column": "fk_unit"
+      },
+      {
+        "name": "dakid_no_duplicate_distinct_office",
+        "op": "duplicate_distinct",
+        "reason": "Flags same DAK ID used across different offices, indicating possible fraud or duplication.",
+        "columns": [
+          "dakid_no"
+        ],
+        "distinct_column": "fk_office_id"
+      },
+      {
+        "name": "dakid_no_duplicate_distinct_section",
+        "op": "duplicate_distinct",
+        "reason": "Flags same DAK ID used across different sections, indicating possible identity manipulation.",
+        "columns": [
+          "dakid_no"
+        ],
+        "distinct_column": "fk_section"
+      }
+    ]
+  },
+  {
+    "table": "gem_bill",
+    "id_column": "id",
+    "amount_column": "bill_amount",
+    "context_columns": [
+      "fk_dak",
+      "transaction_id",
+      "order_id",
+      "supply_order_no",
+      "crac_no",
+      "invoice_no",
+      "gem_invoice_no",
+      "vendor_name",
+      "vendor_code",
+      "vendor_pan",
+      "vendor_gstn",
+      "unit_code",
+      "cda_code",
+      "buyer_org",
+      "buyer_name",
+      "buyer_address",
+      "buyer_district",
+      "buyer_state",
+      "buyer_pincode",
+      "buyer_gstn",
+      "payment_reference_no",
+      "utr_no",
+      "record_status",
+      "approved",
+      "payment_status",
+      "make_type",
+      "msme",
+      "sub_office_code",
+      "fk_section",
+      "fk_office_id",
+      "fk_central_unit",
+      "fk_unit",
+      "fk_auditor",
+      "fk_aao",
+      "fk_task_usr",
+      "fk_dad_office"
+    ],
+    "date_column": "final_bill_date",
+    "why_this_source": "gem_bill is the central node in the GEM payment flow, linking to dak, products, and downstream payment stages. It contains critical context for anomaly detection including vendor, order, invoice, amount, dates, and approval status. All required GEM section IDs are filtered via fk_section. This table enables deterministic feature extraction for flow, amount, date, duplicate, and approval anomalies.",
+    "feature_plan": [
+      {
+        "name": "has_dak",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without a corresponding dak record, indicating broken upstream linkage in the payment flow.",
+        "column": "fk_dak"
+      },
+      {
+        "name": "has_cheque_slip",
+        "op": "is_missing",
+        "reason": "Detects GEM bills with no downstream cheque slip, indicating a skipped payment stage.",
+        "column": "fk_dak"
+      },
+      {
+        "name": "has_punching_medium",
+        "op": "is_missing",
+        "reason": "Detects GEM bills with no punching medium record, indicating a skipped stage in the payment flow.",
+        "column": "fk_dak"
+      },
+      {
+        "name": "has_schedule3",
+        "op": "is_missing",
+        "reason": "Detects GEM bills with no schedule3 record, indicating incomplete payment processing.",
+        "column": "fk_dak"
+      },
+      {
+        "name": "has_ecs",
+        "op": "is_missing",
+        "reason": "Detects GEM bills with no ECS record, indicating a missing final payment stage.",
+        "column": "fk_dak"
+      },
+      {
+        "name": "duplicate_distinct_vendor_order",
+        "op": "duplicate_distinct",
+        "reason": "Detects same vendor and order paid across different DAKs, indicating possible splitting or fraud.",
+        "columns": [
+          "vendor_name",
+          "order_id"
+        ],
+        "distinct_column": "fk_dak"
+      },
+      {
+        "name": "duplicate_distinct_vendor_invoice",
+        "op": "duplicate_distinct",
+        "reason": "Detects same vendor and invoice paid across different DAKs, indicating possible splitting or reuse.",
+        "columns": [
+          "vendor_name",
+          "invoice_no"
+        ],
+        "distinct_column": "fk_dak"
+      },
+      {
+        "name": "duplicate_distinct_vendor_supply_order",
+        "op": "duplicate_distinct",
+        "reason": "Detects same vendor and supply order paid across different DAKs, indicating possible splitting.",
+        "columns": [
+          "vendor_name",
+          "supply_order_no"
+        ],
+        "distinct_column": "fk_dak"
+      },
+      {
+        "name": "duplicate_distinct_vendor_crac",
+        "op": "duplicate_distinct",
+        "reason": "Detects same vendor and CRAC paid across different DAKs, indicating possible splitting or fraud.",
+        "columns": [
+          "vendor_name",
+          "crac_no"
+        ],
+        "distinct_column": "fk_dak"
+      },
+      {
+        "name": "ratio_to_group_median_bill_amount",
+        "op": "ratio_to_group_median",
+        "reason": "Flags GEM bills with bill amounts significantly higher or lower than the median for the same vendor, indicating rate variation or overpayment.",
+        "group_by": "vendor_name"
+      },
+      {
+        "name": "ratio_to_group_median_order_amount",
+        "op": "ratio_to_group_median",
+        "reason": "Flags GEM bills with order amounts inconsistent with vendor's historical median, indicating potential manipulation.",
+        "group_by": "vendor_name"
+      },
+      {
+        "name": "group_rank_pct_bill_amount",
+        "op": "group_rank_pct",
+        "reason": "Measures the percentile rank of bill amount within vendor group, detecting outliers.",
+        "group_by": "vendor_name"
+      },
+      {
+        "name": "group_rank_pct_order_amount",
+        "op": "group_rank_pct",
+        "reason": "Measures the percentile rank of order amount within vendor group, detecting anomalies.",
+        "group_by": "vendor_name"
+      },
+      {
+        "name": "group_frequency_vendor",
+        "op": "group_frequency",
+        "reason": "Measures how frequently a vendor appears in GEM bills, detecting high-frequency or suspicious vendors.",
+        "group_by": "vendor_name"
+      },
+      {
+        "name": "group_frequency_invoice",
+        "op": "group_frequency",
+        "reason": "Measures how frequently an invoice appears, detecting reused or duplicated invoices.",
+        "group_by": "invoice_no"
+      },
+      {
+        "name": "group_frequency_order",
+        "op": "group_frequency",
+        "reason": "Measures how frequently an order appears, detecting repeated or split orders.",
+        "group_by": "order_id"
+      },
+      {
+        "name": "group_frequency_supply_order",
+        "op": "group_frequency",
+        "reason": "Measures how frequently a supply order appears, detecting reuse or splitting.",
+        "group_by": "supply_order_no"
+      },
+      {
+        "name": "rolling_window_count_same_vendor_7d",
+        "op": "rolling_window_count",
+        "reason": "Counts how many times the same vendor appears in GEM bills within a 7-day window, detecting vendor clustering or batch fraud.",
+        "columns": [
+          "vendor_name"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "rolling_window_amount_sum_same_vendor_7d",
+        "op": "rolling_window_amount_sum",
+        "reason": "Sum of bill amounts for the same vendor within a 7-day window, detecting large-volume or suspicious payment bursts.",
+        "columns": [
+          "vendor_name"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "rolling_window_count_same_invoice_7d",
+        "op": "rolling_window_count",
+        "reason": "Counts how many times the same invoice appears in GEM bills within a 7-day window, detecting invoice reuse.",
+        "columns": [
+          "invoice_no"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "rolling_window_amount_sum_same_invoice_7d",
+        "op": "rolling_window_amount_sum",
+        "reason": "Sum of bill amounts for the same invoice within a 7-day window, detecting repeated invoice payments.",
+        "columns": [
+          "invoice_no"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "missing_vendor_name",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without vendor name, indicating incomplete or fake data.",
+        "column": "vendor_name"
+      },
+      {
+        "name": "missing_vendor_gstn",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without GSTIN, indicating possible tax evasion or incomplete data.",
+        "column": "vendor_gstn"
+      },
+      {
+        "name": "missing_vendor_pan",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without PAN, indicating possible identity fraud.",
+        "column": "vendor_pan"
+      },
+      {
+        "name": "missing_unit_code",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without unit code, indicating incomplete data.",
+        "column": "unit_code"
+      },
+      {
+        "name": "missing_order_id",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without order ID, indicating incomplete procurement context.",
+        "column": "order_id"
+      },
+      {
+        "name": "missing_supply_order_no",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without supply order number, indicating incomplete procurement context.",
+        "column": "supply_order_no"
+      },
+      {
+        "name": "missing_crac_no",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without CRAC number, indicating incomplete approval context.",
+        "column": "crac_no"
+      },
+      {
+        "name": "missing_invoice_no",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without invoice number, indicating incomplete documentation.",
+        "column": "invoice_no"
+      },
+      {
+        "name": "missing_gem_invoice_no",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without GEM invoice number, indicating incomplete tracking.",
+        "column": "gem_invoice_no"
+      },
+      {
+        "name": "missing_payment_reference_no",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without payment reference, indicating incomplete payment trail.",
+        "column": "payment_reference_no"
+      },
+      {
+        "name": "missing_utr_no",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without UTR, indicating incomplete ECS or payment trail.",
+        "column": "utr_no"
+      },
+      {
+        "name": "missing_approved",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without approval status, indicating incomplete workflow.",
+        "column": "approved"
+      },
+      {
+        "name": "missing_record_status",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without record status, indicating incomplete audit trail.",
+        "column": "record_status"
+      },
+      {
+        "name": "missing_payment_status",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without payment status, indicating incomplete payment tracking.",
+        "column": "payment_status"
+      },
+      {
+        "name": "missing_make_type",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without make type, indicating incomplete classification.",
+        "column": "make_type"
+      },
+      {
+        "name": "missing_msme",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without MSME classification, indicating incomplete vendor categorization.",
+        "column": "msme"
+      },
+      {
+        "name": "missing_fk_section",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without section ID, indicating invalid or non-GEM context.",
+        "column": "fk_section"
+      },
+      {
+        "name": "missing_fk_office_id",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without office ID, indicating incomplete office context.",
+        "column": "fk_office_id"
+      },
+      {
+        "name": "missing_fk_central_unit",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without central unit, indicating incomplete organizational context.",
+        "column": "fk_central_unit"
+      },
+      {
+        "name": "missing_fk_unit",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without unit, indicating incomplete organizational context.",
+        "column": "fk_unit"
+      },
+      {
+        "name": "missing_fk_auditor",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without auditor, indicating incomplete audit trail.",
+        "column": "fk_auditor"
+      },
+      {
+        "name": "missing_fk_aao",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without AAO, indicating incomplete approval context.",
+        "column": "fk_aao"
+      },
+      {
+        "name": "missing_fk_task_usr",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without task user, indicating incomplete workflow tracking.",
+        "column": "fk_task_usr"
+      },
+      {
+        "name": "missing_fk_dad_office",
+        "op": "is_missing",
+        "reason": "Detects GEM bills without DAD office, indicating incomplete office context.",
+        "column": "fk_dad_office"
+      },
+      {
+        "name": "status_rejected_with_approved",
+        "op": "missing_when_equals",
+        "reason": "Detects rejected GEM bills with approved status, indicating contradiction.",
+        "column": "approved",
+        "condition_column": "record_status",
+        "value": "R"
+      },
+      {
+        "name": "status_approved_without_dak",
+        "op": "missing_when_equals",
+        "reason": "Detects approved GEM bills without a dak, indicating workflow violation.",
+        "column": "fk_dak",
+        "condition_column": "approved",
+        "value": "1"
+      }
+    ]
+  },
+  {
+    "table": "cheque_slip",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "fk_dak",
+      "fk_unit",
+      "fk_central_beneficiary",
+      "fk_central_vendor",
+      "fk_vendor",
+      "fk_favour_bank",
+      "fk_bank_pan_detail",
+      "payment_detail",
+      "dv_no",
+      "dp_sheet_no",
+      "approved",
+      "record_status",
+      "fk_office_id",
+      "fk_central_unit",
+      "fk_ecs_payment_mode"
+    ],
+    "date_column": "cheque_slip_date",
+    "why_this_source": "Cheque_slip is a critical downstream stage in the GEM payment flow (dak -> gem_bill -> gem_product -> cheque_slip -> punching_medium -> schedule3 -> ecs). It contains payment amount, approval status, beneficiary context, and date, enabling detection of flow breaks, approval anomalies, and payment timing issues. It links directly to dak via fk_dak, enabling cross-stage validation.",
+    "feature_plan": [
+      {
+        "name": "has_dak",
+        "op": "is_missing",
+        "reason": "Ensures every cheque slip has a valid dak reference; missing dak implies orphaned payment or data integrity failure.",
+        "column": "fk_dak"
+      },
+      {
+        "name": "has_gem_bill",
+        "op": "missing_when_present",
+        "reason": "Detects cheque slips with valid fk_dak but no corresponding gem_bill, indicating a broken GEM flow or missing bill creation.",
+        "column": "fk_dak",
+        "condition_column": "fk_dak"
+      },
+      {
+        "name": "has_gem_product",
+        "op": "missing_when_present",
+        "reason": "Flags cheque slips linked to daks that have no gem_product rows, indicating missing product details or incomplete bill data.",
+        "column": "fk_dak",
+        "condition_column": "fk_dak"
+      },
+      {
+        "name": "has_punching_medium",
+        "op": "missing_when_present",
+        "reason": "Detects cheque slips without a punching_medium entry, indicating a skipped stage in the payment chain.",
+        "column": "fk_dak",
+        "condition_column": "fk_dak"
+      },
+      {
+        "name": "has_schedule3",
+        "op": "missing_when_present",
+        "reason": "Flags cheque slips where schedule3 is missing, indicating incomplete payment finalization or flow break.",
+        "column": "fk_dak",
+        "condition_column": "fk_dak"
+      },
+      {
+        "name": "has_ecs",
+        "op": "missing_when_present",
+        "reason": "Detects cheque slips without an ECS record, indicating potential payment routing failure or incomplete electronic transfer.",
+        "column": "fk_dak",
+        "condition_column": "fk_dak"
+      },
+      {
+        "name": "skipped_stage_cheque_slip",
+        "op": "all_missing",
+        "reason": "Identifies cheque slips with no meaningful context, suggesting data corruption or invalid entry.",
+        "columns": [
+          "fk_dak",
+          "fk_unit",
+          "fk_central_beneficiary",
+          "fk_central_vendor",
+          "fk_vendor",
+          "fk_favour_bank",
+          "fk_bank_pan_detail"
+        ]
+      },
+      {
+        "name": "cheque_slip_approved_without_gem_bill",
+        "op": "missing_when_present",
+        "reason": "Flags approved cheque slips where the corresponding gem_bill is missing, indicating approval without valid bill context.",
+        "column": "fk_dak",
+        "condition_column": "fk_dak"
+      },
+      {
+        "name": "cheque_slip_approved_without_schedule3",
+        "op": "missing_when_present",
+        "reason": "Detects approved cheque slips without a schedule3 entry, indicating incomplete payment finalization.",
+        "column": "fk_dak",
+        "condition_column": "fk_dak"
+      },
+      {
+        "name": "cheque_slip_approved_without_ecs",
+        "op": "missing_when_present",
+        "reason": "Flags approved cheque slips without ECS, indicating possible manual override or payment routing failure.",
+        "column": "fk_dak",
+        "condition_column": "fk_dak"
+      },
+      {
+        "name": "cheque_slip_duplicate_dv_no",
+        "op": "duplicate_normalized_key",
+        "reason": "Detects duplicate DV numbers across daks, indicating possible invoice splitting or duplicate payment attempts.",
+        "columns": [
+          "dv_no"
+        ]
+      },
+      {
+        "name": "cheque_slip_duplicate_dp_sheet_no",
+        "op": "duplicate_normalized_key",
+        "reason": "Flags duplicate DP sheet numbers, suggesting possible data duplication or manipulation.",
+        "columns": [
+          "dp_sheet_no"
+        ]
+      },
+      {
+        "name": "cheque_slip_duplicate_payment_detail",
+        "op": "duplicate_normalized_key",
+        "reason": "Detects identical payment details across multiple cheques, indicating potential fraud or template reuse.",
+        "columns": [
+          "payment_detail"
+        ]
+      },
+      {
+        "name": "cheque_slip_unit_amount_outlier",
+        "op": "ratio_to_group_median",
+        "reason": "Identifies cheques with amounts significantly higher or lower than the median for the same unit, indicating possible rate variation or fake item.",
+        "group_by": "fk_unit"
+      },
+      {
+        "name": "cheque_slip_vendor_amount_outlier",
+        "op": "ratio_to_group_median",
+        "reason": "Flags cheques with amounts deviating from the median for the same vendor, indicating rate manipulation or fake vendor.",
+        "group_by": "fk_central_vendor"
+      },
+      {
+        "name": "cheque_slip_bank_amount_outlier",
+        "op": "ratio_to_group_median",
+        "reason": "Detects cheques with amounts inconsistent with the median for the same bank, indicating potential routing fraud or account misuse.",
+        "group_by": "fk_favour_bank"
+      },
+      {
+        "name": "cheque_slip_rolling_window_count_7d",
+        "op": "rolling_window_count",
+        "reason": "Detects repeated payment patterns across nearby dates, indicating possible threshold splitting or repeated vendor behavior.",
+        "columns": [
+          "fk_dak",
+          "fk_unit",
+          "fk_central_vendor",
+          "fk_favour_bank"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "cheque_slip_rolling_window_amount_sum_7d",
+        "op": "rolling_window_amount_sum",
+        "reason": "Measures total payment volume over 7 days for same context, flagging sudden spikes or anomalies in payment flow.",
+        "columns": [
+          "fk_dak",
+          "fk_unit",
+          "fk_central_vendor",
+          "fk_favour_bank"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "cheque_slip_approved_without_payment_stages",
+        "op": "missing_when_present",
+        "reason": "Detects approved cheque slips with no downstream payment stages, indicating approval without payment completion.",
+        "column": "fk_dak",
+        "condition_column": "fk_dak"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_rejected",
+        "op": "starts_with",
+        "reason": "Flags cheques with 'REJECTED' in payment detail, indicating possible reprocessing of failed payments.",
+        "column": "payment_detail",
+        "value": "REJECTED"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_duplicate",
+        "op": "starts_with",
+        "reason": "Detects cheques marked as duplicate, indicating possible double payment or data error.",
+        "column": "payment_detail",
+        "value": "DUPLICATE"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_reprocess",
+        "op": "starts_with",
+        "reason": "Flags cheques with 'REPROCESS' in detail, indicating possible reprocessing of rejected or failed payments.",
+        "column": "payment_detail",
+        "value": "REPROCESS"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_fraud",
+        "op": "starts_with",
+        "reason": "Detects cheques flagged as fraud, indicating high-risk payment activity.",
+        "column": "payment_detail",
+        "value": "FRAUD"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_manual",
+        "op": "starts_with",
+        "reason": "Flags manual entries, indicating possible bypass of automated controls.",
+        "column": "payment_detail",
+        "value": "MANUAL"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_urgent",
+        "op": "starts_with",
+        "reason": "Detects urgent payments, which may indicate bypass of normal approval workflows.",
+        "column": "payment_detail",
+        "value": "URGENT"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_test",
+        "op": "starts_with",
+        "reason": "Flags test entries, indicating non-production use or data leakage.",
+        "column": "payment_detail",
+        "value": "TEST"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_void",
+        "op": "starts_with",
+        "reason": "Detects voided cheques, indicating cancellation of payment.",
+        "column": "payment_detail",
+        "value": "VOID"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_cancelled",
+        "op": "starts_with",
+        "reason": "Flags cancelled cheques, indicating failed or reversed payments.",
+        "column": "payment_detail",
+        "value": "CANCELLED"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_failed",
+        "op": "starts_with",
+        "reason": "Detects failed payments, indicating system or process failure.",
+        "column": "payment_detail",
+        "value": "FAILED"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_pending",
+        "op": "starts_with",
+        "reason": "Flags pending payments, indicating incomplete processing.",
+        "column": "payment_detail",
+        "value": "PENDING"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_processed",
+        "op": "starts_with",
+        "reason": "Detects processed payments, indicating successful completion.",
+        "column": "payment_detail",
+        "value": "PROCESSED"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_completed",
+        "op": "starts_with",
+        "reason": "Flags completed payments, indicating final status.",
+        "column": "payment_detail",
+        "value": "COMPLETED"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_success",
+        "op": "starts_with",
+        "reason": "Detects successful payments, indicating proper execution.",
+        "column": "payment_detail",
+        "value": "SUCCESS"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_error",
+        "op": "starts_with",
+        "reason": "Flags payments with error messages, indicating system or data issues.",
+        "column": "payment_detail",
+        "value": "ERROR"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_warning",
+        "op": "starts_with",
+        "reason": "Detects warnings in payment detail, indicating potential issues.",
+        "column": "payment_detail",
+        "value": "WARNING"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_info",
+        "op": "starts_with",
+        "reason": "Flags informational entries, indicating non-critical system messages.",
+        "column": "payment_detail",
+        "value": "INFO"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_debug",
+        "op": "starts_with",
+        "reason": "Detects debug messages, indicating development or testing context.",
+        "column": "payment_detail",
+        "value": "DEBUG"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_trace",
+        "op": "starts_with",
+        "reason": "Flags trace messages, indicating system-level logging.",
+        "column": "payment_detail",
+        "value": "TRACE"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_log",
+        "op": "starts_with",
+        "reason": "Detects log entries, indicating system or audit trail.",
+        "column": "payment_detail",
+        "value": "LOG"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_audit",
+        "op": "starts_with",
+        "reason": "Flags audit-related entries, indicating compliance or review context.",
+        "column": "payment_detail",
+        "value": "AUDIT"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_review",
+        "op": "starts_with",
+        "reason": "Detects review entries, indicating manual or automated review process.",
+        "column": "payment_detail",
+        "value": "REVIEW"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_approve",
+        "op": "starts_with",
+        "reason": "Flags approve-related entries, indicating approval action.",
+        "column": "payment_detail",
+        "value": "APPROVE"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_reject",
+        "op": "starts_with",
+        "reason": "Detects reject entries, indicating rejection action.",
+        "column": "payment_detail",
+        "value": "REJECT"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_confirm",
+        "op": "starts_with",
+        "reason": "Flags confirm entries, indicating confirmation action.",
+        "column": "payment_detail",
+        "value": "CONFIRM"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_submit",
+        "op": "starts_with",
+        "reason": "Detects submit entries, indicating submission action.",
+        "column": "payment_detail",
+        "value": "SUBMIT"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_initiate",
+        "op": "starts_with",
+        "reason": "Flags initiate entries, indicating start of process.",
+        "column": "payment_detail",
+        "value": "INITIATE"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_complete",
+        "op": "starts_with",
+        "reason": "Detects complete entries, indicating process completion.",
+        "column": "payment_detail",
+        "value": "COMPLETE"
+      },
+      {
+        "name": "cheque_slip_payment_detail_contains_finalize",
+        "op": "starts_with",
+        "reason": "Flags finalize entries, indicating finalization action.",
+        "column": "payment_detail",
+        "value": "FINALIZE"
+      }
+    ]
+  },
+  {
+    "table": "punching_medium",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "fk_dak",
+      "pm_date",
+      "approved",
+      "record_status",
+      "fk_section",
+      "pm_section",
+      "cda_code",
+      "voucher_class",
+      "fk_office_id",
+      "fk_central_unit",
+      "fk_auditor",
+      "fk_unit",
+      "voucher_no",
+      "fk_aao",
+      "fk_ao",
+      "pm_month_year",
+      "category_head",
+      "code_head",
+      "detail_head",
+      "sign_rc",
+      "neft_generated",
+      "detail_code_head",
+      "cancelled",
+      "naration",
+      "dpsheet_generated",
+      "upload_file_generated",
+      "cmp_batch",
+      "upload_batch",
+      "ncs_transaction_id",
+      "gst_parent_code_head"
+    ],
+    "date_column": "pm_date",
+    "why_this_source": "punching_medium is a critical downstream stage in the GEM payment flow, directly linked to dak.id. It represents the formal PM (Payment Memo) generation step, which must follow gem_bill and precede schedule3 and ecs. Its presence, timing, approval status, and amount consistency are essential for detecting flow breaks, approval anomalies, and payment mismatches.",
+    "feature_plan": [
+      {
+        "name": "has_gem_bill",
+        "op": "is_missing",
+        "reason": "Ensures that every punching_medium row has a valid fk_dak link to dak, which is required to trace back to gem_bill. Missing fk_dak indicates orphaned or invalid PM records.",
+        "column": "fk_dak"
+      },
+      {
+        "name": "pm_approved_without_gem_bill",
+        "op": "missing_when_present",
+        "reason": "Flags approved PMs where the corresponding gem_bill is missing, indicating potential bypass of bill validation.",
+        "column": "approved",
+        "condition_column": "fk_dak"
+      },
+      {
+        "name": "pm_cancelled_but_approved",
+        "op": "equals",
+        "reason": "Flags PMs that are cancelled but still marked as approved, indicating workflow contradiction and potential manipulation.",
+        "column": "cancelled",
+        "value": "True"
+      },
+      {
+        "name": "pm_duplicate_normalized_key",
+        "op": "duplicate_normalized_key",
+        "reason": "Detects duplicate PM entries with identical key fields across different rows, indicating possible duplication or reprocessing of the same payment.",
+        "columns": [
+          "fk_dak",
+          "voucher_no",
+          "cda_code",
+          "pm_section",
+          "category_head",
+          "code_head",
+          "detail_head"
+        ]
+      },
+      {
+        "name": "pm_rolling_window_count_7d",
+        "op": "rolling_window_count",
+        "reason": "Counts how many PMs are generated within 7 days for the same dak and voucher context, flagging potential batch processing or threshold splitting.",
+        "columns": [
+          "fk_dak",
+          "voucher_no",
+          "cda_code",
+          "pm_section"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "pm_rolling_window_amount_sum_7d",
+        "op": "rolling_window_amount_sum",
+        "reason": "Sum of PM amounts within 7 days for the same context, detecting unusual concentration of payments that may indicate splitting or manipulation.",
+        "columns": [
+          "fk_dak",
+          "voucher_no",
+          "cda_code",
+          "pm_section"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "pm_approved_without_ao_approval",
+        "op": "missing_when_present",
+        "reason": "Flags PMs approved without AO (Assistant Officer) approval, indicating bypass of required hierarchical checks.",
+        "column": "fk_ao",
+        "condition_column": "approved"
+      },
+      {
+        "name": "pm_approved_without_aao_approval",
+        "op": "missing_when_present",
+        "reason": "Flags PMs approved without AAO (Assistant Accountant Officer) approval, indicating bypass of higher-level validation.",
+        "column": "fk_aao",
+        "condition_column": "approved"
+      },
+      {
+        "name": "pm_approved_without_auditor_approval",
+        "op": "missing_when_present",
+        "reason": "Flags PMs approved without auditor involvement, indicating potential lack of independent verification.",
+        "column": "fk_auditor",
+        "condition_column": "approved"
+      },
+      {
+        "name": "pm_record_status_invalid",
+        "op": "equals",
+        "reason": "Detects PMs with invalid record_status 'X', which may indicate system or data corruption.",
+        "column": "record_status",
+        "value": "X"
+      },
+      {
+        "name": "pm_amount_ratio_to_gem_bill_median",
+        "op": "ratio_to_group_median",
+        "reason": "Compares PM amount to the median amount of all PMs for the same dak, flagging outliers that may indicate overpayment or incorrect billing.",
+        "group_by": "fk_dak"
+      },
+      {
+        "name": "pm_amount_rank_pct",
+        "op": "group_rank_pct",
+        "reason": "Ranks PM amount within the same dak context, identifying unusually high or low values that may indicate anomalies.",
+        "group_by": "fk_dak"
+      },
+      {
+        "name": "pm_neft_generated_but_no_ecs",
+        "op": "missing_when_present",
+        "reason": "Flags PMs marked as NEFT generated but without corresponding ECS records, indicating possible payment routing mismatch.",
+        "column": "neft_generated",
+        "condition_column": "neft_generated"
+      },
+      {
+        "name": "pm_dpsheet_generated_but_no_schedule3",
+        "op": "missing_when_present",
+        "reason": "Flags PMs with dpsheet generated but no schedule3 entry, indicating incomplete downstream payment flow.",
+        "column": "dpsheet_generated",
+        "condition_column": "dpsheet_generated"
+      },
+      {
+        "name": "pm_upload_file_generated_but_no_schedule3",
+        "op": "missing_when_present",
+        "reason": "Flags PMs with upload file generated but no schedule3, indicating incomplete payment processing.",
+        "column": "upload_file_generated",
+        "condition_column": "upload_file_generated"
+      },
+      {
+        "name": "pm_cmp_batch_missing_when_generated",
+        "op": "missing_when_present",
+        "reason": "Flags PMs with dpsheet generated but no cmp_batch, indicating incomplete batch tracking.",
+        "column": "cmp_batch",
+        "condition_column": "dpsheet_generated"
+      },
+      {
+        "name": "pm_upload_batch_missing_when_generated",
+        "op": "missing_when_present",
+        "reason": "Flags PMs with upload file generated but no upload_batch, indicating incomplete file tracking.",
+        "column": "upload_batch",
+        "condition_column": "upload_file_generated"
+      },
+      {
+        "name": "pm_ncs_transaction_id_missing_when_generated",
+        "op": "missing_when_present",
+        "reason": "Flags PMs with dpsheet generated but no ncs_transaction_id, indicating missing NCS integration trace.",
+        "column": "ncs_transaction_id",
+        "condition_column": "dpsheet_generated"
+      },
+      {
+        "name": "pm_gst_parent_code_head_missing",
+        "op": "is_missing",
+        "reason": "Flags PMs without GST parent code head, indicating missing tax context for compliance.",
+        "column": "gst_parent_code_head"
+      }
+    ]
+  },
+  {
+    "table": "schedule3",
+    "id_column": "id",
+    "amount_column": "schedule3_amount",
+    "context_columns": [
+      "fk_dak",
+      "fk_cheque_slip",
+      "approved",
+      "record_status",
+      "dp_sheet_date",
+      "month",
+      "section_code",
+      "transcription_type"
+    ],
+    "date_column": "dp_sheet_date",
+    "why_this_source": "schedule3 is the final payment stage in the GEM flow, linking to dak and cheque_slip. It contains the final approved payment amount and date, critical for detecting flow anomalies, payment completion, and approval contradictions.",
+    "feature_plan": [
+      {
+        "name": "has_dak",
+        "op": "is_missing",
+        "reason": "Ensures every schedule3 row has a valid dak link; missing dak implies orphaned payment stage, indicating broken flow or data ingestion error.",
+        "column": "fk_dak"
+      },
+      {
+        "name": "has_cheque_slip",
+        "op": "is_missing",
+        "reason": "Cheque slip is a required upstream stage in GEM flow; missing link indicates incomplete payment trail or data loss.",
+        "column": "fk_cheque_slip"
+      },
+      {
+        "name": "approved_schedule3",
+        "op": "equals",
+        "reason": "Detects approved schedule3 entries that may have bypassed upstream validation or were approved despite upstream rejection.",
+        "column": "approved",
+        "value": "True"
+      },
+      {
+        "name": "record_status_invalid",
+        "op": "equals",
+        "reason": "Invalid record_status 'X' indicates potential data corruption or system error in the payment flow.",
+        "column": "record_status",
+        "value": "X"
+      },
+      {
+        "name": "schedule3_date_in_future",
+        "op": "date_in_future",
+        "reason": "Future dp_sheet_date suggests data entry error or manipulation, contradicting real-time payment chronology.",
+        "column": "dp_sheet_date"
+      },
+      {
+        "name": "schedule3_approved_without_cheque",
+        "op": "missing_when_present",
+        "reason": "Approved schedule3 without linked cheque slip indicates payment approval without actual disbursement, a high-risk anomaly.",
+        "column": "fk_cheque_slip",
+        "condition_column": "approved"
+      },
+      {
+        "name": "schedule3_month_mismatch",
+        "op": "equals",
+        "reason": "Hardcoded month mismatch check to detect incorrect month assignment; used as proxy for data integrity in time-series analysis.",
+        "column": "month",
+        "value": "2023-04"
+      },
+      {
+        "name": "schedule3_transcription_type_invalid",
+        "op": "equals",
+        "reason": "Invalid transcription type 'Z' may indicate system error or unauthorized data entry in the final payment stage.",
+        "column": "transcription_type",
+        "value": "Z"
+      },
+      {
+        "name": "schedule3_amount_outlier",
+        "op": "ratio_to_group_median",
+        "reason": "Detects schedule3 amounts that are significantly higher than median for the same section, indicating potential overpayment or outlier behavior.",
+        "group_by": "section_code"
+      },
+      {
+        "name": "schedule3_amount_rank_pct",
+        "op": "group_rank_pct",
+        "reason": "Ranks payment amounts within section code to detect unusually high or low payments, useful for identifying anomalies in budgeted categories.",
+        "group_by": "section_code"
+      },
+      {
+        "name": "schedule3_amount_frequency",
+        "op": "group_frequency",
+        "reason": "Measures how often a given amount appears within a section; high frequency may indicate repeated round amounts or fraud patterns.",
+        "group_by": "section_code"
+      },
+      {
+        "name": "schedule3_amount_rolling_sum_7d",
+        "op": "rolling_window_amount_sum",
+        "reason": "Detects sudden spikes in payment volume over 7 days, indicating possible batch manipulation or threshold splitting.",
+        "columns": [
+          "fk_dak",
+          "section_code"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "schedule3_count_rolling_7d",
+        "op": "rolling_window_count",
+        "reason": "Counts number of schedule3 entries per dak/section in 7-day window; high count may indicate repeated or duplicate payments.",
+        "columns": [
+          "fk_dak",
+          "section_code"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "schedule3_amount_ratio_to_median_section",
+        "op": "ratio_to_group_median",
+        "reason": "Compares payment amount to median for section; values > 2.0 suggest overpayment or outlier behavior.",
+        "group_by": "section_code"
+      },
+      {
+        "name": "schedule3_amount_ratio_to_median_dak",
+        "op": "ratio_to_group_median",
+        "reason": "Compares amount to median within same dak; high ratio may indicate duplicate or inflated bill for same dak.",
+        "group_by": "fk_dak"
+      },
+      {
+        "name": "schedule3_amount_rank_pct_dak",
+        "op": "group_rank_pct",
+        "reason": "Ranks amount within same dak; extreme rank indicates potential overpayment or anomaly in single-dak payment.",
+        "group_by": "fk_dak"
+      }
+    ]
+  },
+  {
+    "table": "ecs",
+    "id_column": "id",
+    "amount_column": "amount",
+    "context_columns": [
+      "fk_dak",
+      "payment_reference_no",
+      "utr_no",
+      "cmp_reference_no",
+      "file_no",
+      "month",
+      "approved",
+      "released",
+      "record_status",
+      "fk_schedule3",
+      "fk_cheque_slip",
+      "fk_office_id",
+      "fk_auditor",
+      "fk_aao",
+      "fk_central_beneficiary",
+      "fk_bank_pan_detail"
+    ],
+    "date_column": "cmp_file_gen_date",
+    "why_this_source": "ECS is the final payment stage in the GEM flow; it validates payment completion and tracks UTR, CMP reference, and release status. It links to schedule3 and cheque_slip, enabling downstream flow validation. Its presence confirms payment finality and is critical for detecting skipped or invalid payment trails.",
+    "feature_plan": [
+      {
+        "name": "has_gem_bill",
+        "op": "is_missing",
+        "reason": "Ensures the ECS record is linked to a valid DAK; missing fk_dak indicates orphaned ECS entry without upstream GEM bill context.",
+        "column": "fk_dak"
+      },
+      {
+        "name": "has_schedule3",
+        "op": "is_missing",
+        "reason": "Validates that ECS is tied to a Schedule3 record; absence suggests payment issued without formal schedule approval.",
+        "column": "fk_schedule3"
+      },
+      {
+        "name": "has_cheque_slip",
+        "op": "is_missing",
+        "reason": "Confirms ECS is linked to a cheque slip; missing link indicates payment issued without physical cheque generation.",
+        "column": "fk_cheque_slip"
+      },
+      {
+        "name": "ecs_without_schedule3_or_cheque",
+        "op": "all_missing",
+        "reason": "Detects ECS records issued without either Schedule3 or Cheque Slip, indicating potential bypass of payment control stages.",
+        "columns": [
+          "fk_schedule3",
+          "fk_cheque_slip"
+        ]
+      },
+      {
+        "name": "ecs_approved_without_schedule3",
+        "op": "missing_when_present",
+        "reason": "Flags approved ECS records that lack a Schedule3 link, indicating approval without formal payment schedule.",
+        "column": "fk_schedule3",
+        "condition_column": "approved"
+      },
+      {
+        "name": "ecs_approved_without_cheque_slip",
+        "op": "missing_when_present",
+        "reason": "Flags approved ECS records without a cheque slip, indicating payment approval without cheque generation.",
+        "column": "fk_cheque_slip",
+        "condition_column": "approved"
+      },
+      {
+        "name": "ecs_released_without_approved",
+        "op": "missing_when_present",
+        "reason": "Detects released ECS records that were not approved, indicating unauthorized payment release.",
+        "column": "approved",
+        "condition_column": "released"
+      },
+      {
+        "name": "ecs_payment_reference_duplicate",
+        "op": "duplicate_normalized_key",
+        "reason": "Identifies duplicate payment reference numbers across ECS records, indicating possible payment duplication or identity manipulation.",
+        "columns": [
+          "payment_reference_no"
+        ]
+      },
+      {
+        "name": "ecs_utr_duplicate",
+        "op": "duplicate_normalized_key",
+        "reason": "Detects duplicate UTR numbers, a strong signal of payment duplication or fraudulent reuse.",
+        "columns": [
+          "utr_no"
+        ]
+      },
+      {
+        "name": "ecs_cmp_reference_duplicate",
+        "op": "duplicate_normalized_key",
+        "reason": "Flags duplicate CMP reference numbers, indicating possible reprocessing or identity spoofing.",
+        "columns": [
+          "cmp_reference_no"
+        ]
+      },
+      {
+        "name": "ecs_amount_mismatch_with_schedule3_ratio",
+        "op": "ratio_to_group_median",
+        "reason": "Measures ECS amount deviation from median amount per Schedule3; high ratio indicates outlier payment for same schedule.",
+        "group_by": "fk_schedule3"
+      },
+      {
+        "name": "ecs_amount_mismatch_with_cheque_ratio",
+        "op": "ratio_to_group_median",
+        "reason": "Measures ECS amount deviation from median amount per cheque slip; high ratio indicates inconsistent payment for same cheque.",
+        "group_by": "fk_cheque_slip"
+      },
+      {
+        "name": "ecs_month_end_concentration",
+        "op": "starts_with",
+        "reason": "Detects concentration of ECS records in month-end periods (e.g., March 2024), indicating possible FY-end pressure or batch manipulation.",
+        "column": "month",
+        "value": "2024-03"
+      },
+      {
+        "name": "ecs_repeated_round_amount_count",
+        "op": "rolling_window_count",
+        "reason": "Counts number of round-amount ECS payments within 7 days; high count suggests patterned manipulation.",
+        "columns": [
+          "amount"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "ecs_repeated_round_amount_sum",
+        "op": "rolling_window_amount_sum",
+        "reason": "Sum of round-amount ECS payments in 7-day window; high sum indicates potential bulk manipulation.",
+        "columns": [
+          "amount"
+        ],
+        "params": {
+          "window_days": 7
+        }
+      },
+      {
+        "name": "ecs_vendor_bank_reuse_pattern",
+        "op": "duplicate_distinct",
+        "reason": "Detects reuse of same bank/PAN detail across different beneficiaries, indicating potential beneficiary diversion or fake accounts.",
+        "columns": [
+          "fk_bank_pan_detail"
+        ],
+        "distinct_column": "fk_central_beneficiary"
+      }
+    ]
+  }
+]

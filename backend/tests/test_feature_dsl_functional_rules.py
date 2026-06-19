@@ -223,3 +223,40 @@ def test_rolling_window_features_find_nearby_split_payments():
 
     assert features["vendor_ref_7d_count"].tolist() == [2.0, 2.0, 1.0, 1.0]
     assert features["vendor_ref_7d_amount"].tolist() == [97000.0, 97000.0, 120000.0, 3000.0]
+
+
+def test_numeric_column_and_date_gap_features_feed_model_inputs():
+    df = pd.DataFrame(
+        {
+            "amount": [100, 200],
+            "wf_bill_count": [1, 2],
+            "wf_ecs_latest_date": ["2026-06-10", "2026-06-20"],
+            "wf_bill_latest_date": ["2026-06-01", "2026-06-18"],
+        }
+    )
+    plan = validate_feature_plan(
+        [
+            {
+                "name": "bill_count_value",
+                "op": "numeric_column",
+                "column": "wf_bill_count",
+                "reason": "Use workflow bill count directly as a model feature.",
+            },
+            {
+                "name": "bill_to_ecs_days",
+                "op": "date_gap_days",
+                "left": "wf_ecs_latest_date",
+                "right": "wf_bill_latest_date",
+                "reason": "Measure timing gap between bill and ECS stages.",
+            },
+        ],
+        {
+            "context_columns": ["wf_bill_count", "wf_ecs_latest_date", "wf_bill_latest_date"],
+            "date_column": None,
+        },
+    )
+
+    features = compute_feature_frame(df, plan)
+
+    assert features["bill_count_value"].tolist() == [1, 2]
+    assert features["bill_to_ecs_days"].tolist() == [9.0, 2.0]

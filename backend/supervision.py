@@ -28,7 +28,7 @@ import numpy as np
 BACKEND_DIR = Path(__file__).resolve().parent
 POSITIVE_SUPERVISION_FILE = BACKEND_DIR / "positive_supervision.md"
 NEGATIVE_SUPERVISION_FILE = BACKEND_DIR / "negative_supervision.md"
-ARCHITECTURE_GUIDE_FILE = BACKEND_DIR / "anomaly_guide.md"
+ARCHITECTURE_GUIDE_FILE = BACKEND_DIR / "tpp_anomaly_guide.md"
 
 # Maximum score uplift (in the same 0-100 scale as isolation_score) applied to
 # a row that sits exactly on a confirmed-anomaly signature.
@@ -294,7 +294,7 @@ def load_supervision_context_text(
     sections = []
     guide = _read_capped(guide_path)
     if guide:
-        sections.append("ARCHITECTURE GUIDE (anomaly_guide.md):\n" + guide)
+        sections.append("ARCHITECTURE GUIDE (tpp_anomaly_guide.md):\n" + guide)
     supervision = _read_capped(supervision_path)
     if supervision:
         sections.append("CONFIRMED ANOMALY PATTERNS (positive_supervision.md):\n" + supervision)

@@ -201,7 +201,8 @@ h3 {
   text-transform: uppercase;
 }
 
-.providerToggle select {
+.providerToggle select,
+.providerToggle input {
   font: inherit;
   font-weight: 600;
   text-transform: none;
@@ -215,12 +216,18 @@ h3 {
   box-shadow: var(--shadow-sm);
 }
 
-.providerToggle select:focus-visible {
+.providerToggle input {
+  min-width: 128px;
+}
+
+.providerToggle select:focus-visible,
+.providerToggle input:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 1px;
 }
 
-.providerToggle select:disabled {
+.providerToggle select:disabled,
+.providerToggle input:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }

@@ -1,11 +1,4 @@
-import pytest
-
-# ml_engine pulls in scikit-learn / sqlalchemy / openai. Skip cleanly where the
-# runtime deps are not installed; this runs in the full backend environment.
-ml_engine = pytest.importorskip(
-    "ml_engine",
-    reason="ml_engine runtime deps (scikit-learn/sqlalchemy/openai) not installed",
-)
+import ml_engine
 
 Anomaly = ml_engine.Anomaly
 
@@ -17,6 +10,19 @@ def _model_anomaly(i, score):
         source_record_id=str(i),
         score=score,
         context={"isolation_score": score},  # no detector_type -> model anomaly
+    )
+
+
+def _feature_anomaly(i, score, feature):
+    return Anomaly(
+        transaction_id=f"bill:{feature}:{i}",
+        table_name="bill",
+        source_record_id=str(i),
+        score=score,
+        context={
+            "isolation_score": score,
+            "row_top_feature_contributions": [{"feature": feature, "contribution": 0.9}],
+        },
     )
 
 
@@ -65,3 +71,18 @@ def test_returns_all_when_under_budget():
     # Sorted by score descending.
     scores = [a.score for a in chosen]
     assert scores == sorted(scores, reverse=True)
+
+
+def test_limits_anomalies_to_two_per_primary_feature():
+    items = [
+        _feature_anomaly(1, 99, "wf_bill_count"),
+        _feature_anomaly(2, 98, "wf_bill_count"),
+        _feature_anomaly(3, 97, "wf_bill_count"),
+        _feature_anomaly(4, 96, "wf_ecs_count"),
+        _feature_anomaly(5, 95, "wf_ecs_count"),
+        _feature_anomaly(6, 94, "wf_ecs_count"),
+    ]
+
+    chosen = ml_engine.limit_anomalies_per_feature(items, max_per_feature=2)
+
+    assert [item.source_record_id for item in chosen] == ["1", "2", "4", "5"]

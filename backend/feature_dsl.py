@@ -30,6 +30,8 @@ SUPPORTED_FEATURE_OPERATIONS = {
     "duplicate_normalized_key",
     "rolling_window_amount_sum",
     "rolling_window_count",
+    "numeric_column",
+    "date_gap_days",
 }
 
 AMOUNT_SOURCE = "amount"
@@ -81,6 +83,8 @@ def get_feature_contract() -> dict:
             "duplicate_normalized_key": "1 when another scanned row has the same normalized text key after removing punctuation/case differences, else 0",
             "rolling_window_amount_sum": "sum of amount for rows sharing normalized columns within +/- params.window_days of event_date",
             "rolling_window_count": "count of rows sharing normalized columns within +/- params.window_days of event_date",
+            "numeric_column": "numeric value from a selected column, useful for LLM-designed count/sum/score features",
+            "date_gap_days": "signed day difference between left and right date/timestamp columns",
         },
     }
 
@@ -148,7 +152,7 @@ def validate_feature_plan(raw_feature_plan, source: dict) -> list[dict]:
                 continue
             feature["group_by"] = group_by
 
-        elif op in {"is_missing", "date_in_future", "starts_with", "equals"}:
+        elif op in {"is_missing", "date_in_future", "starts_with", "equals", "numeric_column"}:
             if column not in selectable_columns:
                 continue
             feature["column"] = column
@@ -181,7 +185,7 @@ def validate_feature_plan(raw_feature_plan, source: dict) -> list[dict]:
             feature["column"] = column
             feature["condition_column"] = condition_column
 
-        elif op == "date_after":
+        elif op in {"date_after", "date_gap_days"}:
             if left not in selectable_columns or right not in selectable_columns:
                 continue
             feature["left"] = left
@@ -477,5 +481,18 @@ def compute_feature_frame(df: pd.DataFrame, feature_plan: list[dict]) -> pd.Data
                 window_days,
                 aggregation,
             )
+        elif op == "numeric_column":
+            column = feature.get("column")
+            if column not in df.columns:
+                continue
+            feature_data[name] = pd.to_numeric(df[column], errors="coerce")
+        elif op == "date_gap_days":
+            left = feature.get("left")
+            right = feature.get("right")
+            if left not in df.columns or right not in df.columns:
+                continue
+            left_dates = pd.to_datetime(df[left], errors="coerce")
+            right_dates = pd.to_datetime(df[right], errors="coerce")
+            feature_data[name] = (left_dates - right_dates).dt.total_seconds() / 86400
 
     return pd.DataFrame(feature_data).replace([np.inf, -np.inf], np.nan)

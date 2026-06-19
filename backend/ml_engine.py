@@ -1,4 +1,5 @@
 import argparse
+import datetime as dt
 import json
 import os
 import re
@@ -14,7 +15,6 @@ from typing import Iterable
 
 import numpy as np
 import pandas as pd
-from openai import OpenAI
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sklearn.ensemble import IsolationForest
@@ -22,9 +22,23 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import RobustScaler
 
+try:
+    from openai import OpenAI
+except ModuleNotFoundError:
+    OpenAI = None
+
 from db_config import get_llama_settings, get_sqlalchemy_url
 from feature_dsl import compute_feature_frame, validate_feature_plan
 from gem_repeat_purchase_detector import detect_gem_repeat_purchase_anomalies
+from payment_category_filtering import (
+    JoinedContext,
+    RuntimeSource,
+    apply_payment_category_filters,
+    normalize_payment_category,
+    payment_category_dak_sections_from_config,
+    payment_category_source_tables_from_config,
+    resolve_allowed_physical_source_tables,
+)
 from supervision import (
     SUPERVISION_PROMOTE_PROXIMITY,
     SUPERVISION_SUPPRESS_PROXIMITY,
@@ -35,11 +49,9 @@ from supervision import (
     load_supervision_context_text,
 )
 from table_exclusions import (
-    get_allowed_physical_source_tables,
     get_allowed_source_tables,
-    get_payment_category_source_tables,
-    is_allowed_source_table,
     is_excluded_table,
+    is_allowed_source_table,
     load_payment_category_config,
     validate_payment_category_entry,
 )
@@ -50,14 +62,15 @@ PROJECT_ROOT = BACKEND_DIR.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 
 SCHEMA_FILE = str(BACKEND_DIR / "tulip2.0_schema.md")
-SOURCE_CONFIG_FILE = str(BACKEND_DIR / "anomaly_sources.json")
-SCHEMA_CANDIDATE_AUDIT_FILE = str(BACKEND_DIR / "llama_schema_candidates.json")
+SOURCE_CONFIG_FILE = str(BACKEND_DIR / "tpp_anomaly_sources.json")
+SCHEMA_CANDIDATE_AUDIT_FILE = str(BACKEND_DIR / "tpp_schema_candidates.json")
 DEFAULT_MAX_EXPLANATIONS = 500
 DEFAULT_MAX_TABLES_PER_SCAN = 20
 DEFAULT_ROWS_PER_TABLE = 1000
 DEFAULT_CONTAMINATION = 0.02
 DEFAULT_AUTOENCODER_CONFIRMATION_QUANTILE = 0.95
 DEFAULT_DETECTION_STAGE = os.getenv("ANOMALY_DETECTION_STAGE", "isolation").strip().lower()
+MAX_ANOMALIES_PER_FEATURE = int(os.getenv("MAX_ANOMALIES_PER_FEATURE", "2"))
 # Persist in small batches so the dashboard fills progressively during a scan
 # instead of staying empty until one giant transaction commits.
 SAVE_COMMIT_BATCH_SIZE = int(os.getenv("SAVE_COMMIT_BATCH_SIZE", "25"))
@@ -79,21 +92,29 @@ FUNCTIONAL_RULE_OPERATIONS = {
     "duplicate_key",
     "duplicate_distinct",
 }
+ENABLE_FUNCTIONAL_RULE_DETECTOR = os.getenv("ENABLE_FUNCTIONAL_RULE_DETECTOR", "0").strip() == "1"
 
-WORKFLOW_ENTRY_TABLES = (
-    "bill",
-    "gem_bill",
-    "cash_requisition",
-    "civ_medical_bill",
-    "civ_paybill",
-    "civ_tada_ltc_bill",
-    "echs_medical_bill",
-)
+WORKFLOW_ENTRY_TABLES = ("bill",)
 WORKFLOW_LINEAR_STAGES = (
     "cheque_slip",
     "punching_medium",
     "schedule3",
     "ecs",
+)
+THIRD_PARTY_WORKFLOW_STAGES = (
+    "bill",
+    "cheque_slip",
+    "punching_medium",
+    "schedule3",
+    "ecs",
+)
+WORKFLOW_FEATURE_PREFIX = "wf_"
+WORKFLOW_FEATURE_SUFFIXES = (
+    "count",
+    "active_forward_count",
+    "stopped_count",
+    "amount_sum",
+    "latest_date",
 )
 WORKFLOW_AMOUNT_COLUMNS = (
     "amount_passed",
@@ -158,39 +179,14 @@ class ColumnInfo:
     references: str = "None"
 
 
-@dataclass(frozen=True)
-class JoinedContext:
-    source_column: str
-    reference_table: str
-    reference_pk: str
-    reference_column: str
-    alias: str
-
-
-@dataclass(frozen=True)
-class RuntimeSource:
-    table: str
-    id_column: str
-    amount_column: str
-    context_columns: tuple[str, ...]
-    date_column: str | None
-    feature_plan: tuple[dict, ...] = ()
-    base_context_columns: tuple[str, ...] = ()
-    joined_context_columns: tuple[JoinedContext, ...] = ()
-    payment_category: str | None = None
-    dak_section_ids: tuple[int, ...] = ()
-
-    @property
-    def scan_name(self) -> str:
-        return self.payment_category or self.table
-
-
 def build_engine():
     print("[startup] Creating SQLAlchemy engine from DB_* settings.", flush=True)
     return create_engine(get_sqlalchemy_url(), pool_pre_ping=True)
 
 
 def build_llama_client():
+    if OpenAI is None:
+        raise RuntimeError("The openai package is required for LLM explanations. Install project runtime deps.")
     settings = get_llama_settings()
     print(
         f"[startup] Creating Llama/OpenAI-compatible client: {settings['base_url']} "
@@ -251,7 +247,11 @@ def init_payment_category_table(conn) -> None:
                     TRUE,
                     NOW()
                 )
-                ON CONFLICT (category_name) DO NOTHING;
+                ON CONFLICT (category_name)
+                DO UPDATE SET
+                    source_tables = EXCLUDED.source_tables,
+                    dak_section_ids = EXCLUDED.dak_section_ids,
+                    updated_at = NOW();
                 """
             ),
             {
@@ -294,42 +294,6 @@ def load_active_payment_category_config(engine=None) -> dict[str, dict[str, tupl
         return load_payment_category_config()
     categories = load_payment_categories_from_db(engine, include_disabled=True)
     return categories or load_payment_category_config()
-
-
-def payment_category_source_tables_from_config(
-    payment_categories: dict[str, dict[str, tuple]]
-) -> dict[str, tuple[str, ...]]:
-    return {
-        category: config["source_tables"]
-        for category, config in payment_categories.items()
-        if config.get("enabled", True)
-    }
-
-
-def payment_category_dak_sections_from_config(
-    payment_categories: dict[str, dict[str, tuple]]
-) -> dict[str, tuple[int, ...]]:
-    return {
-        category: config["dak_section_ids"]
-        for category, config in payment_categories.items()
-        if config.get("enabled", True)
-    }
-
-
-def resolve_allowed_physical_source_tables(
-    payment_category_source_tables: dict[str, tuple[str, ...]] | None = None,
-) -> tuple[str, ...]:
-    payment_category_source_tables = payment_category_source_tables or get_payment_category_source_tables()
-    tables = []
-    seen = set()
-    for table in get_allowed_source_tables():
-        physical_tables = payment_category_source_tables.get(table, (table,))
-        for physical_table in physical_tables:
-            if physical_table in seen or is_excluded_table(physical_table):
-                continue
-            tables.append(physical_table)
-            seen.add(physical_table)
-    return tuple(tables)
 
 
 def update_payment_category_config(
@@ -684,6 +648,7 @@ def load_configured_runtime_sources(
         ]
         available_extra_joins = available_extra_join_columns(schema, table, column_names)
         extra_aliases = extra_join_aliases(available_extra_joins)
+        workflow_aliases = set(workflow_feature_aliases()) if table == "dak" else set()
         base_context_columns = tuple(
             column
             for column in configured_context_columns
@@ -692,7 +657,7 @@ def load_configured_runtime_sources(
         extra_context_columns = tuple(
             column
             for column in configured_context_columns
-            if column in extra_aliases
+            if column in extra_aliases or column in workflow_aliases
         )
         joined_context_columns = build_joined_contexts(schema, table, base_context_columns)
         context_columns = base_context_columns + extra_context_columns + tuple(
@@ -1046,80 +1011,6 @@ def load_schema_runtime_sources(
     return sources
 
 
-def _with_payment_filter(
-    source: RuntimeSource,
-    payment_category: str | None,
-    payment_category_dak_sections: dict[str, tuple[int, ...]],
-) -> RuntimeSource:
-    if not payment_category:
-        return source
-    return RuntimeSource(
-        table=source.table,
-        id_column=source.id_column,
-        amount_column=source.amount_column,
-        context_columns=source.context_columns,
-        date_column=source.date_column,
-        feature_plan=source.feature_plan,
-        base_context_columns=source.base_context_columns,
-        joined_context_columns=source.joined_context_columns,
-        payment_category=payment_category,
-        dak_section_ids=payment_category_dak_sections[payment_category],
-    )
-
-
-def apply_payment_category_filters(
-    sources: list[RuntimeSource],
-    payment_categories: dict[str, dict[str, tuple]] | None = None,
-) -> list[RuntimeSource]:
-    configured_items = get_allowed_source_tables()
-    payment_categories = payment_categories or load_payment_category_config()
-    all_payment_category_source_tables = {
-        category: config["source_tables"]
-        for category, config in payment_categories.items()
-    }
-    payment_category_source_tables = payment_category_source_tables_from_config(payment_categories)
-    payment_category_dak_sections = payment_category_dak_sections_from_config(payment_categories)
-    if any(item in all_payment_category_source_tables for item in configured_items):
-        filtered_sources: list[RuntimeSource] = []
-        source_by_table = {source.table: source for source in sources}
-        for item in configured_items:
-            if item in all_payment_category_source_tables:
-                if item not in payment_category_source_tables:
-                    continue
-                for table in payment_category_source_tables[item]:
-                    source = source_by_table.get(table)
-                    if source:
-                        filtered_sources.append(_with_payment_filter(source, item, payment_category_dak_sections))
-                continue
-
-            for table in (item,):
-                source = source_by_table.get(table)
-                if source:
-                    filtered_sources.append(source)
-        return filtered_sources
-
-    default_table_payment_category = {
-        table: category
-        for category, tables in payment_category_source_tables.items()
-        for table in tables
-    }
-    disabled_table_categories = {
-        table: category
-        for category, tables in all_payment_category_source_tables.items()
-        if category not in payment_category_source_tables
-        for table in tables
-    }
-    return [
-        _with_payment_filter(
-            source,
-            default_table_payment_category.get(source.table),
-            payment_category_dak_sections,
-        )
-        for source in sources
-        if source.table not in disabled_table_categories
-    ]
-
-
 def table_exists(engine, table: str) -> bool:
     started_at = time.perf_counter()
     with engine.connect() as conn:
@@ -1172,76 +1063,100 @@ def sql_null_literal(alias: str, data_type: str = "text") -> str:
     return f"NULL::{data_type} AS {quote_identifier(alias)}"
 
 
-def build_workflow_stage_select(
+def workflow_active_condition(table_alias: str, columns: set[str], require_forward_motion: bool = True) -> str:
+    conditions = []
+    if "record_status" in columns:
+        conditions.append(f"{table_alias}.{quote_identifier('record_status')} = 'V'")
+    if require_forward_motion and "approved" in columns:
+        conditions.append(f"{table_alias}.{quote_identifier('approved')} IS TRUE")
+    if require_forward_motion and "passed" in columns:
+        conditions.append(f"{table_alias}.{quote_identifier('passed')} IS TRUE")
+    if "cancelled" in columns:
+        conditions.append(
+            f"COALESCE({table_alias}.{quote_identifier('cancelled')}, FALSE) IS FALSE"
+        )
+    if "rejection_status" in columns:
+        conditions.append(f"{table_alias}.{quote_identifier('rejection_status')} IS NULL")
+    return " AND ".join(conditions) if conditions else "TRUE"
+
+
+def workflow_stopped_condition(table_alias: str, columns: set[str]) -> str:
+    conditions = []
+    if "record_status" in columns:
+        conditions.append(
+            f"({table_alias}.{quote_identifier('record_status')} IS NOT NULL "
+            f"AND {table_alias}.{quote_identifier('record_status')} <> 'V')"
+        )
+    if "cancelled" in columns:
+        conditions.append(f"{table_alias}.{quote_identifier('cancelled')} IS TRUE")
+    if "rejection_status" in columns:
+        conditions.append(f"{table_alias}.{quote_identifier('rejection_status')} IS NOT NULL")
+    return " OR ".join(conditions) if conditions else "FALSE"
+
+
+def workflow_type_expression(table_alias: str, columns: set[str]) -> str:
+    for column in ("payment_record_type", "fk_bill_type", "payment_mode"):
+        if column in columns:
+            return f"MIN({table_alias}.{quote_identifier(column)}::text)"
+    return "NULL::text"
+
+
+def build_workflow_stage_aggregate_sql(
     table: str,
     columns: set[str],
-    row_limit: int,
-    stage_kind: str,
+    join_dak_scope: bool = True,
+    filter_to_third_party_dak: bool = False,
 ) -> str:
-    id_column = "id"
+    table_alias = f"{table}_src"
     amount_column = first_existing_column(columns, WORKFLOW_AMOUNT_COLUMNS)
     date_column = first_existing_column(columns, WORKFLOW_DATE_COLUMNS)
-    selected = [
-        f"'{table}'::text AS stage_table",
-        f"'{stage_kind}'::text AS stage_kind",
-        f"{quote_identifier(id_column)}::text AS record_id",
-        f"{quote_identifier('fk_dak')}::text AS dak_id",
-        (
-            f"{quote_identifier(amount_column)}::double precision AS amount"
-            if amount_column
-            else sql_null_literal("amount", "double precision")
-        ),
-        (
-            f"{quote_identifier(date_column)}::timestamp AS event_date"
-            if date_column
-            else sql_null_literal("event_date", "timestamp")
-        ),
-        (
-            f"{quote_identifier('approved')}::text AS approved"
-            if "approved" in columns
-            else sql_null_literal("approved")
-        ),
-        (
-            f"{quote_identifier('passed')}::text AS passed"
-            if "passed" in columns
-            else sql_null_literal("passed")
-        ),
-        (
-            f"{quote_identifier('record_status')}::text AS record_status"
-            if "record_status" in columns
-            else sql_null_literal("record_status")
-        ),
-        (
-            f"{quote_identifier('rejection_status')}::text AS rejection_status"
-            if "rejection_status" in columns
-            else sql_null_literal("rejection_status")
-        ),
-        (
-            f"{quote_identifier('reason')}::text AS reason"
-            if "reason" in columns
-            else sql_null_literal("reason")
-        ),
-        (
-            f"{quote_identifier('rejection_reason')}::text AS rejection_reason"
-            if "rejection_reason" in columns
-            else sql_null_literal("rejection_reason")
-        ),
-    ]
-    order_column = date_column or id_column
+    amount_expression = (
+        f"SUM({table_alias}.{quote_identifier(amount_column)}::double precision)"
+        if amount_column
+        else "NULL::double precision"
+    )
+    latest_date_expression = (
+        f"MAX({table_alias}.{quote_identifier(date_column)}::timestamp)"
+        if date_column
+        else "NULL::timestamp"
+    )
+    active_condition = workflow_active_condition(table_alias, columns)
+    stopped_condition = workflow_stopped_condition(table_alias, columns)
+    if join_dak_scope:
+        join_clause = f"""
+        INNER JOIN dak_scope
+            ON {table_alias}.{quote_identifier('fk_dak')}::text = dak_scope.dak_id
+        """
+    elif filter_to_third_party_dak:
+        dak_section_filter_sql = ", ".join(str(section_id) for section_id in THIRD_PARTY_DAK_SECTION_IDS)
+        join_clause = f"""
+        INNER JOIN dak AS {table_alias}_dak_filter
+            ON {table_alias}.{quote_identifier('fk_dak')} = {table_alias}_dak_filter.{quote_identifier('id')}
+           AND {table_alias}_dak_filter.{quote_identifier('fk_section')} IN ({dak_section_filter_sql})
+        """
+    else:
+        join_clause = ""
     return f"""
-        SELECT {", ".join(selected)}
-        FROM {quote_identifier(table)}
-        WHERE {quote_identifier('fk_dak')} IS NOT NULL
-        ORDER BY {quote_identifier(order_column)} DESC NULLS LAST
-        LIMIT {int(row_limit)}
+        SELECT
+            {table_alias}.{quote_identifier('fk_dak')}::text AS dak_id,
+            COUNT(*)::bigint AS {quote_identifier(f'{table}_count')},
+            COUNT(*) FILTER (WHERE {active_condition})::bigint AS {quote_identifier(f'{table}_active_forward_count')},
+            COUNT(*) FILTER (WHERE {stopped_condition})::bigint AS {quote_identifier(f'{table}_stopped_count')},
+            {amount_expression} AS {quote_identifier(f'{table}_amount_sum')},
+            {latest_date_expression} AS {quote_identifier(f'{table}_latest_date')},
+            {workflow_type_expression(table_alias, columns)} AS {quote_identifier(f'{table}_workflow_type')}
+        FROM {quote_identifier(table)} AS {table_alias}
+        {join_clause}
+        WHERE {table_alias}.{quote_identifier('fk_dak')} IS NOT NULL
+        GROUP BY {table_alias}.{quote_identifier('fk_dak')}
     """
 
 
 def workflow_stage_inventory(engine, row_limit: int) -> tuple[list[str], dict[str, set[str]]]:
-    allowed_tables = set(get_allowed_source_tables())
+    allowed_tables = set(get_allowed_physical_source_tables())
     tables = [
         table
-        for table in (*WORKFLOW_ENTRY_TABLES, *WORKFLOW_LINEAR_STAGES)
+        for table in THIRD_PARTY_WORKFLOW_STAGES
         if table in allowed_tables
     ]
     columns_by_table: dict[str, set[str]] = {}
@@ -1257,23 +1172,130 @@ def workflow_stage_inventory(engine, row_limit: int) -> tuple[list[str], dict[st
     return usable_tables, columns_by_table
 
 
-def build_workflow_union_sql(
+def build_workflow_stage_ctes(
     usable_tables: list[str],
     columns_by_table: dict[str, set[str]],
-    row_limit: int,
-) -> str:
-    selects = []
+) -> list[str]:
+    ctes = []
     for table in usable_tables:
-        stage_kind = "entry" if table in WORKFLOW_ENTRY_TABLES else "linear"
-        selects.append(
-            build_workflow_stage_select(
-                table,
-                columns_by_table[table],
-                row_limit=row_limit,
-                stage_kind=stage_kind,
-            )
+        ctes.append(f"{table}_stage AS ({build_workflow_stage_aggregate_sql(table, columns_by_table[table])})")
+    return ctes
+
+
+def workflow_count_column(table: str, suffix: str) -> str:
+    return f"{table}_{suffix}"
+
+
+def workflow_feature_alias(table: str, suffix: str) -> str:
+    return f"{WORKFLOW_FEATURE_PREFIX}{table}_{suffix}"
+
+
+def workflow_feature_aliases() -> tuple[str, ...]:
+    return tuple(
+        workflow_feature_alias(table, suffix)
+        for table in THIRD_PARTY_WORKFLOW_STAGES
+        for suffix in WORKFLOW_FEATURE_SUFFIXES
+    )
+
+
+def is_workflow_feature_alias(column: str) -> bool:
+    return column in set(workflow_feature_aliases())
+
+
+def workflow_stage_select_columns(usable_tables: list[str]) -> list[str]:
+    columns = []
+    for table in THIRD_PARTY_WORKFLOW_STAGES:
+        if table not in usable_tables:
+            for suffix in ("count", "active_forward_count", "stopped_count"):
+                columns.append(f"0::bigint AS {quote_identifier(workflow_count_column(table, suffix))}")
+            columns.append(f"NULL::double precision AS {quote_identifier(workflow_count_column(table, 'amount_sum'))}")
+            columns.append(f"NULL::timestamp AS {quote_identifier(workflow_count_column(table, 'latest_date'))}")
+            columns.append(f"NULL::text AS {quote_identifier(workflow_count_column(table, 'workflow_type'))}")
+            continue
+        alias = f"{table}_stage"
+        for suffix in ("count", "active_forward_count", "stopped_count"):
+            column = workflow_count_column(table, suffix)
+            columns.append(f"COALESCE({alias}.{quote_identifier(column)}, 0)::bigint AS {quote_identifier(column)}")
+        amount_column = workflow_count_column(table, "amount_sum")
+        columns.append(f"{alias}.{quote_identifier(amount_column)} AS {quote_identifier(amount_column)}")
+        date_column = workflow_count_column(table, "latest_date")
+        columns.append(f"{alias}.{quote_identifier(date_column)} AS {quote_identifier(date_column)}")
+        type_column = workflow_count_column(table, "workflow_type")
+        columns.append(f"{alias}.{quote_identifier(type_column)} AS {quote_identifier(type_column)}")
+    return columns
+
+
+def workflow_stage_joins(usable_tables: list[str]) -> str:
+    return "\n".join(
+        f"LEFT JOIN {table}_stage ON dak_scope.dak_id = {table}_stage.dak_id"
+        for table in usable_tables
+    )
+
+
+def build_dak_workflow_feature_ctes() -> tuple[list[str], list[str], list[str]]:
+    ctes = []
+    joins = []
+    selected_columns = []
+    for table in THIRD_PARTY_WORKFLOW_STAGES:
+        if table == "bill":
+            columns = {
+                "fk_dak",
+                "amount_claimed",
+                "amount_passed",
+                "record_status",
+                "approved",
+                "passed",
+                "cancelled",
+                "invoice_date",
+                "dp_sheet_date",
+                "cmp_date",
+            }
+        elif table == "cheque_slip":
+            columns = {"fk_dak", "amount", "record_status", "approved", "cheque_slip_date", "npb_date"}
+        elif table == "punching_medium":
+            columns = {"fk_dak", "amount", "record_status", "approved", "passed", "cancelled", "pm_date"}
+        elif table == "schedule3":
+            columns = {
+                "fk_dak",
+                "schedule3_amount",
+                "record_status",
+                "approved",
+                "rejection_status",
+                "dp_sheet_date",
+                "npb_date",
+            }
+        elif table == "ecs":
+            columns = {
+                "fk_dak",
+                "amount",
+                "record_status",
+                "approved",
+                "rejection_status",
+                "cmp_file_gen_date",
+                "npb_date",
+                "utr_date",
+                "scroll_date",
+            }
+        else:
+            columns = {"fk_dak"}
+
+        stage_alias = f"{table}_wf"
+        ctes.append(
+            f"{stage_alias} AS ("
+            f"{build_workflow_stage_aggregate_sql(table, columns, join_dak_scope=False, filter_to_third_party_dak=True)}"
+            ")"
         )
-    return "\nUNION ALL\n".join(f"({select_sql})" for select_sql in selects)
+        joins.append(f"LEFT JOIN {stage_alias} ON src.{quote_identifier('id')}::text = {stage_alias}.dak_id")
+        for suffix in WORKFLOW_FEATURE_SUFFIXES:
+            source_column = workflow_count_column(table, suffix)
+            alias = workflow_feature_alias(table, suffix)
+            if suffix in {"count", "active_forward_count", "stopped_count"}:
+                selected_columns.append(
+                    f"COALESCE({stage_alias}.{quote_identifier(source_column)}, 0)::double precision AS {quote_identifier(alias)}"
+                )
+            else:
+                selected_columns.append(f"{stage_alias}.{quote_identifier(source_column)} AS {quote_identifier(alias)}")
+    return ctes, joins, selected_columns
 
 
 def workflow_anomaly_context(
@@ -1287,11 +1309,7 @@ def workflow_anomaly_context(
         "detector_type": "workflow_process",
         "source_table": "dak_workflow",
         "transaction_id": dak_id,
-        "workflow": (
-            "dak -> one of bill/gem_bill/cash_requisition/civ_medical_bill/"
-            "civ_paybill/civ_tada_ltc_bill/echs_medical_bill -> cheque_slip "
-            "-> punching_medium -> schedule3 -> ecs"
-        ),
+        "workflow": "dak -> bill -> cheque_slip -> punching_medium -> schedule3 -> ecs",
         "anomaly_type": anomaly_type,
         "statistical_reason": reason,
     }
@@ -1358,92 +1376,266 @@ def make_workflow_anomaly(
     )
 
 
+def int_count(row: dict, key: str) -> int:
+    value = row.get(key)
+    if value is None or pd.isna(value):
+        return 0
+    return int(value)
+
+
+def workflow_row_flags(row: dict) -> dict:
+    return {
+        "has_bill": int_count(row, "bill_count") > 0,
+        "has_cheque_slip": int_count(row, "cheque_slip_count") > 0,
+        "has_punching_medium": int_count(row, "punching_medium_count") > 0,
+        "has_schedule3": int_count(row, "schedule3_count") > 0,
+        "has_ecs": int_count(row, "ecs_count") > 0,
+    }
+
+
+def workflow_payment_type(row: dict) -> str:
+    for key in (
+        "bill_workflow_type",
+        "cheque_slip_workflow_type",
+        "punching_medium_workflow_type",
+        "schedule3_workflow_type",
+        "ecs_workflow_type",
+    ):
+        value = row.get(key)
+        if value is not None and not pd.isna(value) and str(value).strip():
+            return str(value)
+    return "THIRD_PARTY_PAYMENTS"
+
+
+def make_workflow_issue(
+    anomaly_type: str,
+    row: dict,
+    missing_step: str,
+    present_later_step: str,
+    reason: str,
+    score: float,
+) -> dict:
+    flags = workflow_row_flags(row)
+    dak_id = normalize_record_id(row.get("dak_id"))
+    stage_counts = {
+        "bill_count": int_count(row, "bill_count"),
+        "cheque_slip_count": int_count(row, "cheque_slip_count"),
+        "punching_medium_count": int_count(row, "punching_medium_count"),
+        "schedule3_count": int_count(row, "schedule3_count"),
+        "ecs_count": int_count(row, "ecs_count"),
+        "bill_active_forward_count": int_count(row, "bill_active_forward_count"),
+        "cheque_slip_active_forward_count": int_count(row, "cheque_slip_active_forward_count"),
+        "punching_medium_active_forward_count": int_count(row, "punching_medium_active_forward_count"),
+        "schedule3_active_forward_count": int_count(row, "schedule3_active_forward_count"),
+        "bill_stopped_count": int_count(row, "bill_stopped_count"),
+        "cheque_slip_stopped_count": int_count(row, "cheque_slip_stopped_count"),
+        "punching_medium_stopped_count": int_count(row, "punching_medium_stopped_count"),
+        "schedule3_stopped_count": int_count(row, "schedule3_stopped_count"),
+    }
+    return {
+        "anomaly_type": anomaly_type,
+        "dak_id": dak_id,
+        "payment_workflow_type": workflow_payment_type(row),
+        "missing_step": missing_step,
+        "present_later_step": present_later_step,
+        "anomaly_reason": reason,
+        "score": score,
+        "stage_counts": stage_counts,
+        **flags,
+    }
+
+
+def classify_workflow_row(row: dict, available_stages: set[str]) -> list[dict]:
+    issues: list[dict] = []
+    flags = workflow_row_flags(row)
+    dak_id = normalize_record_id(row.get("dak_id"))
+    dak_record_status = row.get("dak_record_status")
+    dak_is_valid = dak_record_status is None or pd.isna(dak_record_status) or str(dak_record_status).strip() == "V"
+
+    def has(stage: str) -> bool:
+        return flags[f"has_{stage}"]
+
+    def active(stage: str) -> int:
+        return int_count(row, f"{stage}_active_forward_count")
+
+    def stopped(stage: str) -> int:
+        return int_count(row, f"{stage}_stopped_count")
+
+    if "bill" in available_stages and dak_is_valid and not has("bill") and not any(flags.values()):
+        issues.append(
+            make_workflow_issue(
+                "dak_without_downstream_movement",
+                row,
+                "bill",
+                "dak",
+                f"Dak {dak_id} is in the TPP section scope but has no bill or later payment-stage row.",
+                82.0,
+            )
+        )
+
+    downstream_checks = [
+        ("cheque_slip", "bill", 96.0),
+        ("punching_medium", "cheque_slip", 94.0),
+        ("schedule3", "punching_medium", 92.0),
+        ("ecs", "schedule3", 90.0),
+    ]
+    for later_step, required_step, score in downstream_checks:
+        if later_step not in available_stages or required_step not in available_stages:
+            continue
+        if has(later_step) and not has(required_step):
+            issues.append(
+                make_workflow_issue(
+                    f"{later_step}_without_{required_step}",
+                    row,
+                    required_step,
+                    later_step,
+                    f"Dak {dak_id} has {later_step} row(s) but no {required_step} row.",
+                    score,
+                )
+            )
+
+    forward_checks = [
+        ("bill", "cheque_slip", 78.0),
+        ("cheque_slip", "punching_medium", 76.0),
+        ("punching_medium", "schedule3", 74.0),
+        ("schedule3", "ecs", 72.0),
+    ]
+    for current_step, next_step, score in forward_checks:
+        if current_step not in available_stages or next_step not in available_stages:
+            continue
+        if active(current_step) > 0 and not has(next_step):
+            issues.append(
+                make_workflow_issue(
+                    f"{current_step}_active_without_{next_step}",
+                    row,
+                    next_step,
+                    current_step,
+                    (
+                        f"Dak {dak_id} has active/valid {current_step} row(s) that should move forward, "
+                        f"but no {next_step} row is present."
+                    ),
+                    score,
+                )
+            )
+
+    stopped_checks = [
+        ("bill", ("cheque_slip", "punching_medium", "schedule3", "ecs"), 88.0),
+        ("cheque_slip", ("punching_medium", "schedule3", "ecs"), 86.0),
+        ("punching_medium", ("schedule3", "ecs"), 84.0),
+        ("schedule3", ("ecs",), 82.0),
+    ]
+    for stopped_step, later_steps, score in stopped_checks:
+        if stopped_step not in available_stages or stopped(stopped_step) <= 0:
+            continue
+        present_later_steps = [
+            later_step
+            for later_step in later_steps
+            if later_step in available_stages and has(later_step)
+        ]
+        if present_later_steps:
+            present_later_step = present_later_steps[-1]
+            issues.append(
+                make_workflow_issue(
+                    f"stopped_{stopped_step}_moved_to_{present_later_step}",
+                    row,
+                    "workflow_stop",
+                    present_later_step,
+                    (
+                        f"Dak {dak_id} has stopped/rejected/invalid {stopped_step} row(s), "
+                        f"but later {present_later_step} row(s) are present."
+                    ),
+                    score,
+                )
+            )
+
+    return issues
+
+
 def detect_workflow_anomalies(engine, row_limit: int = DEFAULT_ROWS_PER_TABLE) -> list[Anomaly]:
     print("[workflow] Starting dak-to-ecs process-flow anomaly checks.", flush=True)
+    if not table_exists(engine, "dak"):
+        print("[workflow] Required root table missing: dak.", flush=True)
+        return []
+    dak_columns = load_table_columns(engine, "dak")
+    if "id" not in dak_columns or "fk_section" not in dak_columns:
+        print("[workflow] Dak table lacks required id/fk_section columns.", flush=True)
+        return []
+
     usable_tables, columns_by_table = workflow_stage_inventory(engine, row_limit)
     if not usable_tables:
         print("[workflow] No usable workflow tables available.", flush=True)
         return []
 
-    entry_tables = [table for table in usable_tables if table in WORKFLOW_ENTRY_TABLES]
-    if not entry_tables:
+    if "bill" not in usable_tables:
         print("[workflow] No usable entry-stage bill tables available.", flush=True)
         return []
 
-    workflow_union_sql = build_workflow_union_sql(usable_tables, columns_by_table, row_limit)
     dak_section_filter_sql = ", ".join(str(section_id) for section_id in THIRD_PARTY_DAK_SECTION_IDS)
-    query = f"""
-        WITH workflow_rows AS (
-            {workflow_union_sql}
+    dak_order_column = first_existing_column(
+        dak_columns,
+        ("created_at", "bill_date", "list_date", "reference_date", "id"),
+    )
+    dak_scope_select = [
+        f"dak_src.{quote_identifier('id')}::text AS dak_id",
+        f"dak_src.{quote_identifier('fk_section')} AS fk_section",
+        (
+            f"dak_src.{quote_identifier('record_status')}::text AS dak_record_status"
+            if "record_status" in dak_columns
+            else "NULL::text AS dak_record_status"
         ),
-        stage_counts AS (
-            SELECT
-                dak_id,
-                COUNT(*) FILTER (WHERE stage_kind = 'entry') AS entry_count,
-                COUNT(DISTINCT stage_table) FILTER (WHERE stage_kind = 'entry') AS entry_table_count,
-                COUNT(*) FILTER (WHERE stage_table = 'cheque_slip') AS cheque_slip_count,
-                COUNT(*) FILTER (WHERE stage_table = 'punching_medium') AS punching_medium_count,
-                COUNT(*) FILTER (WHERE stage_table = 'schedule3') AS schedule3_count,
-                COUNT(*) FILTER (WHERE stage_table = 'ecs') AS ecs_count,
-                ARRAY_REMOVE(ARRAY_AGG(DISTINCT stage_table) FILTER (WHERE stage_kind = 'entry'), NULL) AS entry_tables,
-                MAX(event_date) AS latest_event_date
-            FROM workflow_rows
-            GROUP BY dak_id
+        (
+            f"dak_src.{quote_identifier('dakid_no')}::text AS dakid_no"
+            if "dakid_no" in dak_columns
+            else "NULL::text AS dakid_no"
+        ),
+    ]
+    stage_ctes = build_workflow_stage_ctes(usable_tables, columns_by_table)
+    ctes = [
+        f"""
+        dak_scope AS (
+            SELECT {", ".join(dak_scope_select)}
+            FROM dak AS dak_src
+            WHERE dak_src.{quote_identifier('fk_section')} IN ({dak_section_filter_sql})
+            ORDER BY dak_src.{quote_identifier(dak_order_column)} DESC NULLS LAST
+            LIMIT :row_limit
         )
-        SELECT stage_counts.*
-        FROM stage_counts
-        INNER JOIN dak AS workflow_dak
-            ON stage_counts.dak_id = workflow_dak.id::text
-        WHERE workflow_dak.fk_section IN ({dak_section_filter_sql})
-          AND (
-              entry_table_count > 1
-              OR (cheque_slip_count > 0 AND entry_count = 0)
-              OR (punching_medium_count > 0 AND cheque_slip_count = 0)
-              OR (schedule3_count > 0 AND punching_medium_count = 0)
-              OR (ecs_count > 0 AND schedule3_count = 0)
-          )
-        ORDER BY latest_event_date DESC NULLS LAST, dak_id DESC
-        LIMIT :row_limit;
+        """,
+        *stage_ctes,
+    ]
+    selected_stage_columns = workflow_stage_select_columns(usable_tables)
+    query = f"""
+        WITH {", ".join(ctes)}
+        SELECT
+            dak_scope.dak_id,
+            dak_scope.dakid_no,
+            dak_scope.fk_section,
+            dak_scope.dak_record_status,
+            {", ".join(selected_stage_columns)}
+        FROM dak_scope
+        {workflow_stage_joins(usable_tables)}
+        ORDER BY dak_scope.dak_id DESC;
     """
     started_at = time.perf_counter()
     rows = pd.read_sql(text(query), engine, params={"row_limit": row_limit})
     anomalies: list[Anomaly] = []
-    for row in rows.itertuples(index=False):
-        counts = {
-            "entry_count": int(row.entry_count or 0),
-            "entry_table_count": int(row.entry_table_count or 0),
-            "cheque_slip_count": int(row.cheque_slip_count or 0),
-            "punching_medium_count": int(row.punching_medium_count or 0),
-            "schedule3_count": int(row.schedule3_count or 0),
-            "ecs_count": int(row.ecs_count or 0),
-            "entry_tables": list(row.entry_tables or []),
-        }
-        if counts["entry_table_count"] > 1:
-            reason = (
-                f"Dak {row.dak_id} appears in multiple first-stage bill tables "
-                f"({', '.join(counts['entry_tables'])}) before the common payment flow."
-            )
+    available_stages = set(usable_tables)
+    for row in rows.to_dict("records"):
+        for issue in classify_workflow_row(row, available_stages):
+            extra = {
+                key: value
+                for key, value in issue.items()
+                if key not in {"score", "stage_counts"}
+            }
             anomalies.append(
                 make_workflow_anomaly(
-                    "multiple_entry_bill_tables",
-                    row.dak_id,
-                    reason,
-                    98.0,
-                    stage_counts=counts,
+                    issue["anomaly_type"],
+                    issue["dak_id"],
+                    issue["anomaly_reason"],
+                    float(issue["score"]),
+                    stage_counts=issue["stage_counts"],
+                    extra=extra,
                 )
             )
-        if counts["cheque_slip_count"] > 0 and counts["entry_count"] == 0:
-            reason = f"Dak {row.dak_id} has cheque_slip rows but no matching first-stage bill table row."
-            anomalies.append(make_workflow_anomaly("cheque_without_entry", row.dak_id, reason, 96.0, counts))
-        if counts["punching_medium_count"] > 0 and counts["cheque_slip_count"] == 0:
-            reason = f"Dak {row.dak_id} reached punching_medium without a cheque_slip row."
-            anomalies.append(make_workflow_anomaly("punching_without_cheque", row.dak_id, reason, 94.0, counts))
-        if counts["schedule3_count"] > 0 and counts["punching_medium_count"] == 0:
-            reason = f"Dak {row.dak_id} reached schedule3 without a punching_medium row."
-            anomalies.append(make_workflow_anomaly("schedule3_without_punching", row.dak_id, reason, 92.0, counts))
-        if counts["ecs_count"] > 0 and counts["schedule3_count"] == 0:
-            reason = f"Dak {row.dak_id} reached ecs without a schedule3 row."
-            anomalies.append(make_workflow_anomaly("ecs_without_schedule3", row.dak_id, reason, 90.0, counts))
 
     print(
         f"[workflow] Produced {len(anomalies)} process-flow anomaly candidate(s) "
@@ -1453,7 +1645,7 @@ def detect_workflow_anomalies(engine, row_limit: int = DEFAULT_ROWS_PER_TABLE) -
     return anomalies
 
 
-def build_source_query(source: RuntimeSource) -> str:
+def build_source_query(source: RuntimeSource, filter_by_dak_list_date: bool = False) -> str:
     selected_columns = [
         f"src.{quote_identifier(source.id_column)} AS transaction_id",
         f"src.{quote_identifier(source.amount_column)} AS amount",
@@ -1471,9 +1663,22 @@ def build_source_query(source: RuntimeSource) -> str:
     join_aliases = {}
     dak_filter_alias = None
     extra_join_alias_by_key = {}
+    ctes = []
     if source.dak_section_ids:
         if source.table == "dak":
             dak_filter_alias = "src"
+        elif source.table == "gem_product":
+            dak_filter_alias = "dak_filter"
+            extra_join_alias_by_key[("fk_gem_bill", "gem_bill", "id")] = "gem_bill_filter"
+            join_clauses.append(
+                "INNER JOIN gem_bill AS gem_bill_filter "
+                f"ON src.{quote_identifier('fk_gem_bill')} = gem_bill_filter.{quote_identifier('id')}"
+            )
+            join_clauses.append(
+                "INNER JOIN dak AS dak_filter "
+                f"ON gem_bill_filter.{quote_identifier('fk_dak')} = dak_filter.{quote_identifier('id')}"
+            )
+            selected_columns.append(f"gem_bill_filter.{quote_identifier('fk_dak')} AS {quote_identifier('fk_dak')}")
         else:
             dak_filter_alias = "dak_filter"
             extra_join_alias_by_key[("fk_dak", "dak", "id")] = dak_filter_alias
@@ -1481,6 +1686,12 @@ def build_source_query(source: RuntimeSource) -> str:
                 "INNER JOIN dak AS dak_filter "
                 f"ON src.{quote_identifier('fk_dak')} = dak_filter.{quote_identifier('id')}"
             )
+
+    if source.table == "dak":
+        workflow_ctes, workflow_joins, workflow_selected_columns = build_dak_workflow_feature_ctes()
+        ctes.extend(workflow_ctes)
+        join_clauses.extend(workflow_joins)
+        selected_columns.extend(workflow_selected_columns)
 
     selected_extra_aliases = set(source.context_columns).difference(base_context_columns)
     for extra_join in EXTRA_SOURCE_JOIN_COLUMNS.get(source.table, ()):
@@ -1526,6 +1737,8 @@ def build_source_query(source: RuntimeSource) -> str:
     if dak_filter_alias:
         section_ids = ", ".join(str(section_id) for section_id in source.dak_section_ids)
         where_parts.append(f"{dak_filter_alias}.{quote_identifier('fk_section')} IN ({section_ids})")
+    if filter_by_dak_list_date and dak_filter_alias:
+        where_parts.append(f"{dak_filter_alias}.{quote_identifier('list_date')} BETWEEN :start_date AND :end_date")
     where_clause = " AND ".join(where_parts)
     order_clause = (
         f"ORDER BY src.{quote_identifier(source.date_column)} DESC"
@@ -1533,7 +1746,9 @@ def build_source_query(source: RuntimeSource) -> str:
         else f"ORDER BY src.{quote_identifier(source.id_column)} DESC"
     )
 
+    with_clause = f"WITH {', '.join(ctes)}" if ctes else ""
     return f"""
+        {with_clause}
         SELECT {", ".join(selected_columns)}
         FROM {quote_identifier(source.table)} AS src
         {" ".join(join_clauses)}
@@ -1543,17 +1758,22 @@ def build_source_query(source: RuntimeSource) -> str:
     """
 
 
-def load_runtime_sources(engine=None) -> list[RuntimeSource]:
-    allowed_tables = get_allowed_source_tables()
-    if not allowed_tables:
-        raise RuntimeError("LLAMA_BUSINESS_PRIORITY_TABLES did not provide any usable table names.")
+def load_runtime_sources(engine=None, selected_payment_category: str | None = None) -> list[RuntimeSource]:
     payment_categories = load_active_payment_category_config(engine)
-    allowed_physical_tables = resolve_allowed_physical_source_tables(
-        payment_category_source_tables_from_config(payment_categories)
-    )
+    selected_payment_category = normalize_payment_category(selected_payment_category, payment_categories)
+    payment_category_source_tables = payment_category_source_tables_from_config(payment_categories)
+    if selected_payment_category:
+        allowed_tables = (selected_payment_category,)
+        allowed_physical_tables = payment_category_source_tables[selected_payment_category]
+    else:
+        allowed_tables = get_allowed_source_tables()
+        if not allowed_tables:
+            raise RuntimeError("LLAMA_BUSINESS_PRIORITY_TABLES did not provide any usable table names.")
+        allowed_physical_tables = resolve_allowed_physical_source_tables(payment_category_source_tables)
     print(
         "[source] Runtime table allow-list from LLAMA_BUSINESS_PRIORITY_TABLES: "
-        f"{', '.join(allowed_tables)}",
+        f"{', '.join(allowed_tables)}"
+        + (f" (selected_payment_category={selected_payment_category})" if selected_payment_category else ""),
         flush=True,
     )
     schema = parse_schema_file(root_tables=allowed_physical_tables)
@@ -1571,23 +1791,34 @@ def load_runtime_sources(engine=None) -> list[RuntimeSource]:
             f"No valid anomaly source tables from LLAMA_BUSINESS_PRIORITY_TABLES found in {SOURCE_CONFIG_FILE}. "
             "Run `venv/bin/python backend/run_architecture.py architect` after setting the allow-list."
         )
-    return apply_payment_category_filters(sources, payment_categories)
+    return apply_payment_category_filters(
+        sources,
+        payment_categories,
+        selected_payment_category=selected_payment_category,
+    )
 
 
 def load_recent_transactions(
     engine,
     source: RuntimeSource,
     row_limit: int = DEFAULT_ROWS_PER_TABLE,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> pd.DataFrame:
-    query = build_source_query(source)
+    filter_by_dak_list_date = bool(start_date and end_date and source.dak_section_ids)
+    query = build_source_query(source, filter_by_dak_list_date=filter_by_dak_list_date)
     filter_text = f", dak_sections={list(source.dak_section_ids)}" if source.dak_section_ids else ""
+    date_filter_text = f", dak.list_date={start_date}..{end_date}" if filter_by_dak_list_date else ""
     print(
         f"[query] Running source query against {source.scan_name} "
-        f"(db_table={source.table}{filter_text}). row_limit={row_limit}",
+        f"(db_table={source.table}{filter_text}{date_filter_text}). row_limit={row_limit}",
         flush=True,
     )
     started_at = time.perf_counter()
-    df = pd.read_sql(text(query), engine, params={"row_limit": row_limit})
+    params = {"row_limit": row_limit}
+    if filter_by_dak_list_date:
+        params.update({"start_date": start_date, "end_date": end_date})
+    df = pd.read_sql(text(query), engine, params=params)
     print(
         f"[query] Loaded {len(df)} row(s) and {len(df.columns)} column(s) "
         f"from {source.scan_name} in {time.perf_counter() - started_at:.2f}s.",
@@ -1856,6 +2087,8 @@ def json_safe_value(value):
         return bool(value)
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
+    if isinstance(value, (dt.datetime, dt.date)):
+        return value.isoformat()
     if pd.isna(value):
         return None
     return value
@@ -1896,6 +2129,8 @@ def append_autoencoder_confirmation(
 
 
 def has_functional_rule_features(source: RuntimeSource) -> bool:
+    if not ENABLE_FUNCTIONAL_RULE_DETECTOR:
+        return False
     return any(feature.get("op") in FUNCTIONAL_RULE_OPERATIONS for feature in get_feature_plan(source))
 
 
@@ -2336,6 +2571,44 @@ def select_balanced_anomalies(
     return chosen
 
 
+def primary_contributing_feature(anomaly: Anomaly) -> str | None:
+    contributions = anomaly.context.get("row_top_feature_contributions") or []
+    if isinstance(contributions, list) and contributions:
+        first = contributions[0]
+        if isinstance(first, dict) and first.get("feature"):
+            return str(first["feature"])
+    failed_rules = anomaly.context.get("failed_rule_features") or []
+    if isinstance(failed_rules, list) and failed_rules:
+        return str(failed_rules[0])
+    return None
+
+
+def limit_anomalies_per_feature(
+    anomalies: list[Anomaly],
+    max_per_feature: int = MAX_ANOMALIES_PER_FEATURE,
+) -> list[Anomaly]:
+    if max_per_feature <= 0:
+        return anomalies
+    kept = []
+    counts: dict[str, int] = {}
+    for anomaly in sorted(anomalies, key=lambda item: item.score, reverse=True):
+        feature = primary_contributing_feature(anomaly)
+        if not feature:
+            kept.append(anomaly)
+            continue
+        if counts.get(feature, 0) >= max_per_feature:
+            continue
+        counts[feature] = counts.get(feature, 0) + 1
+        kept.append(anomaly)
+    if len(kept) != len(anomalies):
+        print(
+            f"[persist] Per-feature cap kept {len(kept)} of {len(anomalies)} "
+            f"candidate(s), max_per_feature={max_per_feature}.",
+            flush=True,
+        )
+    return kept
+
+
 def _insert_anomaly_row(conn, anomaly: Anomaly, explanation: str) -> int:
     safe_context = json_safe_object(anomaly.context)
     isolation_score = (
@@ -2400,6 +2673,7 @@ def save_anomalies(
     batch_size: int = SAVE_COMMIT_BATCH_SIZE,
 ) -> int:
     anomalies = list(anomalies)
+    anomalies = limit_anomalies_per_feature(anomalies)
     total = len(anomalies)
     to_explain = select_balanced_anomalies(anomalies, max_explanations)[:max_explanations]
     skipped = max(0, total - len(to_explain))
@@ -2421,7 +2695,7 @@ def save_anomalies(
             index = batch_start + offset + 1
             explanation = generate_reasoning_via_llama(
                 llama_client,
-                anomaly.context,
+                json_safe_object(anomaly.context),
                 index,
                 len(to_explain),
                 supervision_context=supervision_context,
@@ -2495,10 +2769,19 @@ def run_scan(
     max_tables: int = DEFAULT_MAX_TABLES_PER_SCAN,
     rows_per_table: int = DEFAULT_ROWS_PER_TABLE,
     detection_stage: str = DEFAULT_DETECTION_STAGE,
+    payment_category: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> dict:
     started_at = time.perf_counter()
-    print("[scan] Starting scan cycle.", flush=True)
-    sources = load_runtime_sources(engine)
+    print(
+        "[scan] Starting scan cycle"
+        + (f" for payment_category={payment_category}" if payment_category else "")
+        + (f", dak.list_date={start_date}..{end_date}" if start_date and end_date else "")
+        + ".",
+        flush=True,
+    )
+    sources = load_runtime_sources(engine, selected_payment_category=payment_category)
     all_anomalies = []
     scanned_tables = []
     skipped_tables = []
@@ -2521,7 +2804,13 @@ def run_scan(
             skipped_tables.append({"table": source.scan_name, "db_table": source.table, "reason": "missing"})
             continue
 
-        df = load_recent_transactions(engine, source, row_limit=rows_per_table)
+        df = load_recent_transactions(
+            engine,
+            source,
+            row_limit=rows_per_table,
+            start_date=start_date,
+            end_date=end_date,
+        )
         if df.empty:
             skipped_tables.append({"table": source.scan_name, "db_table": source.table, "reason": "empty"})
             continue
@@ -2534,6 +2823,8 @@ def run_scan(
                 "table": source.scan_name,
                 "db_table": source.table,
                 "dak_section_filter": list(source.dak_section_ids),
+                "dak_list_date_start": start_date,
+                "dak_list_date_end": end_date,
                 "amount_column": source.amount_column,
                 "rows_loaded": len(df),
                 "anomaly_candidates": len(anomalies),
@@ -2556,32 +2847,25 @@ def run_scan(
             }
         )
 
-    workflow_anomalies = detect_workflow_anomalies(engine, row_limit=rows_per_table)
-    all_anomalies.extend(workflow_anomalies)
-    if workflow_anomalies:
-        scanned_tables.append(
-            {
-                "table": "workflow_process",
-                "amount_column": "process_flow",
-                "rows_loaded": len(workflow_anomalies),
-                "anomaly_candidates": len(workflow_anomalies),
-            }
-        )
-
     all_anomalies.sort(key=lambda anomaly: anomaly.score, reverse=True)
-    inserted = save_anomalies(engine, llama_client, all_anomalies, max_explanations)
+    capped_anomalies = limit_anomalies_per_feature(all_anomalies)
+    inserted = save_anomalies(engine, llama_client, capped_anomalies, max_explanations)
     removed = remove_unconfirmed_scan_rows(
         engine,
         (table["table"] for table in scanned_tables),
-        (anomaly.transaction_id for anomaly in all_anomalies),
+        (anomaly.transaction_id for anomaly in capped_anomalies),
     )
     duration = time.perf_counter() - started_at
     result = {
         "tables_scanned": len(scanned_tables),
         "scanned_tables": scanned_tables,
+        "payment_category": payment_category,
+        "dak_list_date_start": start_date,
+        "dak_list_date_end": end_date,
         "skipped_tables": skipped_tables[:20],
         "rows_loaded": sum(table["rows_loaded"] for table in scanned_tables),
         "anomaly_candidates": len(all_anomalies),
+        "anomaly_candidates_after_feature_cap": len(capped_anomalies),
         "anomalies_stored": inserted,
         "stale_anomalies_removed": removed,
         "detection_stage": detection_stage,
@@ -2598,6 +2882,9 @@ def start_continuous_monitoring(
     max_tables: int = DEFAULT_MAX_TABLES_PER_SCAN,
     rows_per_table: int = DEFAULT_ROWS_PER_TABLE,
     detection_stage: str = DEFAULT_DETECTION_STAGE,
+    payment_category: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> None:
     print("[startup] ml_engine.py starting.", flush=True)
     print(
@@ -2605,7 +2892,8 @@ def start_continuous_monitoring(
         f"{'single scan' if once else 'continuous monitor'}, "
         f"interval={interval_seconds}s, max_explanations={max_explanations}, "
         f"max_tables={max_tables}, rows_per_table={rows_per_table}, "
-        f"detection_stage={detection_stage}.",
+        f"detection_stage={detection_stage}, "
+        f"dak.list_date={start_date or 'any'}..{end_date or 'any'}.",
         flush=True,
     )
     print("[startup] React UI is separate. Run `cd frontend && npm run dev` for the browser UI.", flush=True)
@@ -2629,6 +2917,9 @@ def start_continuous_monitoring(
                 max_tables=max_tables,
                 rows_per_table=rows_per_table,
                 detection_stage=detection_stage,
+                payment_category=payment_category,
+                start_date=start_date,
+                end_date=end_date,
             )
             print(
                 f"Scan complete. Stored/updated anomaly rows: {result['anomalies_stored']}",
@@ -2743,6 +3034,9 @@ def start_full_app(
     max_tables: int = DEFAULT_MAX_TABLES_PER_SCAN,
     rows_per_table: int = DEFAULT_ROWS_PER_TABLE,
     detection_stage: str = DEFAULT_DETECTION_STAGE,
+    payment_category: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     open_browser: bool = True,
 ) -> None:
     ui_port = find_available_port(host, ui_port)
@@ -2753,6 +3047,7 @@ def start_full_app(
     print(f"[startup] Max tables per scan: {max_tables}", flush=True)
     print(f"[startup] Rows per table: {rows_per_table}", flush=True)
     print(f"[startup] Detection stage: {detection_stage}", flush=True)
+    print(f"[startup] Dak list_date filter: {start_date or 'any'}..{end_date or 'any'}", flush=True)
     print(f"[startup] API URL: {api_url}", flush=True)
     print(f"[startup] UI URL: {ui_url}", flush=True)
     print("[startup] Browser will open once. Run scan from the UI button.", flush=True)
@@ -2772,6 +3067,9 @@ def start_full_app(
         max_tables=max_tables,
         rows_per_table=rows_per_table,
         detection_stage=detection_stage,
+        payment_category=payment_category,
+        start_date=start_date,
+        end_date=end_date,
     )
     api_thread = threading.Thread(target=api_server.serve_forever, daemon=True)
     api_thread.start()
@@ -2820,6 +3118,12 @@ def start_full_app(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the Tulip anomaly engine.")
+    parser.add_argument(
+        "payment",
+        nargs="?",
+        choices=["tpp", "gem", "up"],
+        help="Start the full app for this payment type. Examples: python3 backend/ml_engine.py tpp|gem|up.",
+    )
     parser.add_argument("--once", action="store_true", help="Run one scan and exit.")
     parser.add_argument("--api", action="store_true", help="Run only the localhost API server.")
     parser.add_argument("--monitor", action="store_true", help="Run only the terminal scanner loop.")
@@ -2857,11 +3161,29 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_DETECTION_STAGE if DEFAULT_DETECTION_STAGE in {"isolation", "autoencoder"} else "isolation",
         help="Use isolation for first-pass anomalies, or autoencoder for second-pass confirmation.",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--payment-category",
+        choices=["tpp", "gem", "up", "THIRD_PARTY_PAYMENTS", "GEM_BILLS", "UNIT_PAYMENTS"],
+        default=None,
+        help="Scan only one payment type: tpp, gem, or up.",
+    )
+    parser.add_argument("--start-date", default=None, help="Dak list_date start date, YYYY-MM-DD.")
+    parser.add_argument("--end-date", default=None, help="Dak list_date end date, YYYY-MM-DD.")
+    args = parser.parse_args()
+    if bool(args.start_date) != bool(args.end_date):
+        parser.error("--start-date and --end-date must be provided together.")
+    for value, label in ((args.start_date, "--start-date"), (args.end_date, "--end-date")):
+        if value:
+            try:
+                dt.date.fromisoformat(value)
+            except ValueError:
+                parser.error(f"{label} must use YYYY-MM-DD.")
+    return args
 
 
 if __name__ == "__main__":
     args = parse_args()
+    payment_category = args.payment or args.payment_category
     if args.once:
         start_continuous_monitoring(
             interval_seconds=args.interval,
@@ -2870,6 +3192,9 @@ if __name__ == "__main__":
             max_tables=args.max_tables,
             rows_per_table=args.rows_per_table,
             detection_stage=args.detection_stage,
+            payment_category=payment_category,
+            start_date=args.start_date,
+            end_date=args.end_date,
         )
     elif args.api:
         from api import start_api_server
@@ -2881,6 +3206,9 @@ if __name__ == "__main__":
             max_tables=args.max_tables,
             rows_per_table=args.rows_per_table,
             detection_stage=args.detection_stage,
+            payment_category=payment_category,
+            start_date=args.start_date,
+            end_date=args.end_date,
         )
     elif args.monitor:
         start_continuous_monitoring(
@@ -2890,6 +3218,9 @@ if __name__ == "__main__":
             max_tables=args.max_tables,
             rows_per_table=args.rows_per_table,
             detection_stage=args.detection_stage,
+            payment_category=payment_category,
+            start_date=args.start_date,
+            end_date=args.end_date,
         )
     else:
         start_full_app(
@@ -2900,5 +3231,8 @@ if __name__ == "__main__":
             max_tables=args.max_tables,
             rows_per_table=args.rows_per_table,
             detection_stage=args.detection_stage,
+            payment_category=payment_category,
+            start_date=args.start_date,
+            end_date=args.end_date,
             open_browser=not args.no_browser,
         )

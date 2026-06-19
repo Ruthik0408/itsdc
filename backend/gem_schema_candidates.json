@@ -1,0 +1,4244 @@
+[
+  {
+    "table": "dak",
+    "row_count": 1528278,
+    "column_count": 73,
+    "usable_column_count": 33,
+    "sparse_column_fraction": 0.5479,
+    "score": 59.9072,
+    "primary_keys": [
+      "id:bigint:PK:nn=100%"
+    ],
+    "amount_candidates": [
+      "amount:double precision:nn=78%"
+    ],
+    "date_candidates": [
+      "created_at:timestamp without time zone:nn=100%",
+      "reference_date:date:nn=100%",
+      "list_date:date:nn=99%",
+      "disposal_date:date:nn=88%",
+      "bill_date:date:nn=63%"
+    ],
+    "context_candidates": [
+      "record_status:character(1):nn=100%",
+      "fk_section:integer:FK->section:nn=100%",
+      "fk_dak_type:integer:FK->dak_type:nn=100%",
+      "fk_office_id:integer:FK->dad_office:nn=100%",
+      "fk_central_unit:integer:FK->aaa_central_unit:nn=93%",
+      "fk_unit:integer:FK->unit:nn=87%",
+      "fk_dak_entry_usr:integer:FK->usr:nn=81%",
+      "fk_task_usr:integer:FK->usr:nn=80%",
+      "kpi_bill_type:character varying(10):nn=58%"
+    ],
+    "status_candidates": [
+      "record_status:character(1):nn=100%"
+    ],
+    "business_priority": true,
+    "relationship_context": [],
+    "validation_context": [],
+    "full_usable_columns_for_stage_2": [
+      {
+        "column": "record_status",
+        "data_type": "character(1)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1528278,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "id",
+        "data_type": "bigint",
+        "key": "PK",
+        "references": "None",
+        "non_null_count": 1528278,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "created_at",
+        "data_type": "timestamp without time zone",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1528278,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "reference_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1528109,
+        "null_fraction": 0.0001
+      },
+      {
+        "column": "list_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1515563,
+        "null_fraction": 0.0083
+      },
+      {
+        "column": "disposal_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1343344,
+        "null_fraction": 0.121
+      },
+      {
+        "column": "amount",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1197631,
+        "null_fraction": 0.2164
+      },
+      {
+        "column": "bill_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 968996,
+        "null_fraction": 0.366
+      },
+      {
+        "column": "fk_section",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "section",
+        "non_null_count": 1528272,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_dak_type",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "dak_type",
+        "non_null_count": 1528272,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_office_id",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "dad_office",
+        "non_null_count": 1528270,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "list_no",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1513549,
+        "null_fraction": 0.0096
+      },
+      {
+        "column": "fk_central_unit",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "aaa_central_unit",
+        "non_null_count": 1427484,
+        "null_fraction": 0.066
+      },
+      {
+        "column": "fk_unit",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "unit",
+        "non_null_count": 1328537,
+        "null_fraction": 0.1307
+      },
+      {
+        "column": "fk_dak_entry_usr",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 1230951,
+        "null_fraction": 0.1946
+      },
+      {
+        "column": "fk_task_usr",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 1230211,
+        "null_fraction": 0.195
+      },
+      {
+        "column": "kpi_bill_type",
+        "data_type": "character varying(10)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 885461,
+        "null_fraction": 0.4206
+      },
+      {
+        "column": "reference_no",
+        "data_type": "character varying(100)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1528266,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "multiple_entry",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1528278,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "month_year",
+        "data_type": "character varying(7)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1528272,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "dak_year",
+        "data_type": "character varying(9)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1528272,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "subject",
+        "data_type": "text",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1527666,
+        "null_fraction": 0.0004
+      },
+      {
+        "column": "dakid_no",
+        "data_type": "character varying(18)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1522319,
+        "null_fraction": 0.0039
+      },
+      {
+        "column": "disposal_no",
+        "data_type": "character varying(100)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1308638,
+        "null_fraction": 0.1437
+      },
+      {
+        "column": "rescheduled",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1230431,
+        "null_fraction": 0.1949
+      },
+      {
+        "column": "mode_of_receipt",
+        "data_type": "character varying(20)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1230419,
+        "null_fraction": 0.1949
+      },
+      {
+        "column": "security_grading",
+        "data_type": "character varying(20)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1230419,
+        "null_fraction": 0.1949
+      },
+      {
+        "column": "gpf_pran_ppan_no",
+        "data_type": "character varying(16)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1077066,
+        "null_fraction": 0.2952
+      },
+      {
+        "column": "gem_bill",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1074021,
+        "null_fraction": 0.2972
+      },
+      {
+        "column": "reason",
+        "data_type": "text",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1036055,
+        "null_fraction": 0.3221
+      },
+      {
+        "column": "bill_no",
+        "data_type": "character varying(30)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 969122,
+        "null_fraction": 0.3659
+      },
+      {
+        "column": "pfms_bill",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 604845,
+        "null_fraction": 0.6042
+      },
+      {
+        "column": "remarks",
+        "data_type": "text",
+        "key": "",
+        "references": "None",
+        "non_null_count": 305750,
+        "null_fraction": 0.7999
+      }
+    ],
+    "removed_sparse_columns": [
+      {
+        "column": "fk_bill_type",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 28141,
+        "null_fraction": 0.9816
+      },
+      {
+        "column": "fk_imprest",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_dad_employee",
+        "data_type": "bigint",
+        "key": "FK",
+        "non_null_count": 2364,
+        "null_fraction": 0.9985
+      },
+      {
+        "column": "fk_civ_employee",
+        "data_type": "bigint",
+        "key": "FK",
+        "non_null_count": 48711,
+        "null_fraction": 0.9681
+      },
+      {
+        "column": "emp_no",
+        "data_type": "character varying(8)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "dad_account_no",
+        "data_type": "character varying(8)",
+        "key": "",
+        "non_null_count": 46004,
+        "null_fraction": 0.9699
+      },
+      {
+        "column": "fk_outward_dak",
+        "data_type": "bigint",
+        "key": "FK",
+        "non_null_count": 1,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_usr",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 2533,
+        "null_fraction": 0.9983
+      },
+      {
+        "column": "task_no",
+        "data_type": "character varying(6)",
+        "key": "",
+        "non_null_count": 196111,
+        "null_fraction": 0.8717
+      },
+      {
+        "column": "fk_old_dak",
+        "data_type": "bigint",
+        "key": "FK",
+        "non_null_count": 500,
+        "null_fraction": 0.9997
+      },
+      {
+        "column": "temp_dak_id",
+        "data_type": "character varying(50)",
+        "key": "",
+        "non_null_count": 243,
+        "null_fraction": 0.9998
+      },
+      {
+        "column": "fk_dad_office",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 260839,
+        "null_fraction": 0.8293
+      },
+      {
+        "column": "priority",
+        "data_type": "integer",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_vendor",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 26421,
+        "null_fraction": 0.9827
+      },
+      {
+        "column": "sender_name",
+        "data_type": "character varying(50)",
+        "key": "",
+        "non_null_count": 47198,
+        "null_fraction": 0.9691
+      },
+      {
+        "column": "sender_city",
+        "data_type": "character varying(20)",
+        "key": "",
+        "non_null_count": 45906,
+        "null_fraction": 0.97
+      },
+      {
+        "column": "regn_no",
+        "data_type": "character varying(15)",
+        "key": "",
+        "non_null_count": 21,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fis_doc_no",
+        "data_type": "character varying(50)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fis_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fis_code_head",
+        "data_type": "character varying(9)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fis_xml_file_no",
+        "data_type": "text",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_fis_imported_by",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fis_imported_at",
+        "data_type": "timestamp without time zone",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "pfms_sanction_id",
+        "data_type": "character varying(50)",
+        "key": "",
+        "non_null_count": 173258,
+        "null_fraction": 0.8866
+      },
+      {
+        "column": "pfms_sanction_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 7454,
+        "null_fraction": 0.9951
+      },
+      {
+        "column": "fk_auditor_disposal",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 277408,
+        "null_fraction": 0.8185
+      },
+      {
+        "column": "fk_aao_disposal",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 251278,
+        "null_fraction": 0.8356
+      },
+      {
+        "column": "fk_ao_disposal",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 88554,
+        "null_fraction": 0.9421
+      },
+      {
+        "column": "auditor_disposal_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 277408,
+        "null_fraction": 0.8185
+      },
+      {
+        "column": "aao_disposal_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 251278,
+        "null_fraction": 0.8356
+      },
+      {
+        "column": "ao_disposal_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 88555,
+        "null_fraction": 0.9421
+      },
+      {
+        "column": "msme_cat",
+        "data_type": "character varying(1)",
+        "key": "",
+        "non_null_count": 22789,
+        "null_fraction": 0.9851
+      },
+      {
+        "column": "make_cat",
+        "data_type": "character varying(2)",
+        "key": "",
+        "non_null_count": 88881,
+        "null_fraction": 0.9418
+      },
+      {
+        "column": "exp_cat",
+        "data_type": "character varying(1)",
+        "key": "",
+        "non_null_count": 6033,
+        "null_fraction": 0.9961
+      },
+      {
+        "column": "codehead",
+        "data_type": "character varying(9)",
+        "key": "",
+        "non_null_count": 129081,
+        "null_fraction": 0.9155
+      },
+      {
+        "column": "major_head",
+        "data_type": "character varying(4)",
+        "key": "",
+        "non_null_count": 5960,
+        "null_fraction": 0.9961
+      },
+      {
+        "column": "uuid",
+        "data_type": "character varying(14)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_central_vendor",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 41748,
+        "null_fraction": 0.9727
+      },
+      {
+        "column": "fk_central_civ_employee",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 55158,
+        "null_fraction": 0.9639
+      },
+      {
+        "column": "file_path",
+        "data_type": "character varying",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      }
+    ]
+  },
+  {
+    "table": "gem_bill",
+    "row_count": 194881,
+    "column_count": 140,
+    "usable_column_count": 87,
+    "sparse_column_fraction": 0.3786,
+    "score": 89.8571,
+    "primary_keys": [
+      "id:bigint:PK:nn=100%"
+    ],
+    "amount_candidates": [
+      "bill_amount:double precision:nn=100%",
+      "order_amount:double precision:nn=100%",
+      "deduction_amount:double precision:nn=90%",
+      "amount_to_be_paid:double precision:nn=90%",
+      "amount_passed:double precision:nn=90%"
+    ],
+    "date_candidates": [
+      "supply_order_date:date:nn=100%",
+      "ifd_diary_date:date:nn=100%",
+      "created_at:timestamp without time zone:nn=100%",
+      "bill_date:date:nn=100%",
+      "invoice_date:date:nn=100%",
+      "crac_date:date:nn=100%",
+      "order_date:date:nn=100%",
+      "final_bill_date:date:nn=100%"
+    ],
+    "context_candidates": [
+      "record_status:character(1):nn=100%",
+      "fk_section:integer:FK->section:nn=100%",
+      "fk_office_id:integer:FK->dad_office:nn=100%",
+      "fk_dak:bigint:FK->dak:nn=97%",
+      "fk_central_unit:integer:FK->aaa_central_unit:nn=97%",
+      "fk_auditor:integer:FK->usr:nn=97%",
+      "fk_task_usr:integer:FK->usr:nn=96%",
+      "fk_dad_office:integer:FK->dad_office:nn=92%",
+      "fk_aao:integer:FK->usr:nn=91%",
+      "fk_unit:integer:FK->unit:nn=87%",
+      "unit_code:character varying(14):nn=100%",
+      "vendor_name:character varying(200):nn=100%",
+      "vendor_address:character varying(200):nn=100%",
+      "vendor_code:character varying(20):nn=100%"
+    ],
+    "status_candidates": [
+      "record_status:character(1):nn=100%",
+      "approved:boolean:nn=100%",
+      "payment_status:character varying(10):nn=96%"
+    ],
+    "business_priority": true,
+    "relationship_context": [
+      {
+        "source_fk": "fk_dak",
+        "referenced_table": "dak",
+        "join_rule": "gem_bill.fk_dak = dak.id",
+        "referenced_columns": [
+          "record_status:character(1):nn=100%",
+          "id:bigint:PK:nn=100%",
+          "reference_date:date:nn=100%",
+          "bill_date:date:nn=100%",
+          "amount:double precision:nn=100%",
+          "disposal_date:date:nn=100%",
+          "created_at:timestamp without time zone:nn=100%",
+          "list_date:date:nn=100%"
+        ]
+      },
+      {
+        "source_fk": "id",
+        "referenced_table": "gem_product",
+        "join_rule": "Join product rows with gem_bill.id = gem_product.fk_gem_bill.",
+        "referenced_columns": [
+          "id:integer:PK:nn=100%",
+          "expected_delivery_date:date:nn=100%",
+          "actual_delivery_date:date:nn=100%",
+          "sgst:double precision:nn=100%",
+          "cgst:double precision:nn=100%",
+          "freight_sgst:double precision:nn=100%",
+          "freight_cgst:double precision:nn=100%",
+          "utgst:double precision:nn=100%",
+          "freight_utgst:double precision:nn=100%",
+          "igst:double precision:nn=100%",
+          "freight_igst:double precision:nn=100%",
+          "contract_start_date:date:nn=100%"
+        ]
+      },
+      {
+        "source_fk": "fk_dak",
+        "referenced_table": "dak_payment_siblings",
+        "join_rule": "Join payment stages with dak.id = <stage>.fk_dak.",
+        "referenced_columns": [
+          "dak.id",
+          "gem_bill.fk_dak",
+          "cheque_slip.fk_dak",
+          "punching_medium.fk_dak",
+          "schedule3.fk_dak",
+          "ecs.fk_dak"
+        ]
+      }
+    ],
+    "validation_context": [],
+    "full_usable_columns_for_stage_2": [
+      {
+        "column": "record_status",
+        "data_type": "character(1)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194881,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "approved",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194881,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "id",
+        "data_type": "bigint",
+        "key": "PK",
+        "references": "None",
+        "non_null_count": 194881,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "supply_order_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "ifd_diary_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "bill_amount",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "created_at",
+        "data_type": "timestamp without time zone",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194881,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "bill_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "invoice_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "crac_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "order_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "order_amount",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "final_bill_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "receipt_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194870,
+        "null_fraction": 0.0001
+      },
+      {
+        "column": "auditor_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 188313,
+        "null_fraction": 0.0337
+      },
+      {
+        "column": "aao_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 176982,
+        "null_fraction": 0.0918
+      },
+      {
+        "column": "deduction_amount",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 176161,
+        "null_fraction": 0.0961
+      },
+      {
+        "column": "amount_to_be_paid",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 176085,
+        "null_fraction": 0.0964
+      },
+      {
+        "column": "amount_passed",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 174584,
+        "null_fraction": 0.1042
+      },
+      {
+        "column": "dp_sheet_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 174301,
+        "null_fraction": 0.1056
+      },
+      {
+        "column": "cmp_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 174301,
+        "null_fraction": 0.1056
+      },
+      {
+        "column": "utr_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 173568,
+        "null_fraction": 0.1094
+      },
+      {
+        "column": "payment_pushed_date",
+        "data_type": "timestamp without time zone",
+        "key": "",
+        "references": "None",
+        "non_null_count": 99184,
+        "null_fraction": 0.4911
+      },
+      {
+        "column": "fk_section",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "section",
+        "non_null_count": 194881,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_office_id",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "dad_office",
+        "non_null_count": 194881,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_dak",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "dak",
+        "non_null_count": 188509,
+        "null_fraction": 0.0327
+      },
+      {
+        "column": "fk_central_unit",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "aaa_central_unit",
+        "non_null_count": 188435,
+        "null_fraction": 0.0331
+      },
+      {
+        "column": "fk_auditor",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 188312,
+        "null_fraction": 0.0337
+      },
+      {
+        "column": "fk_task_usr",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 186551,
+        "null_fraction": 0.0427
+      },
+      {
+        "column": "fk_dad_office",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "dad_office",
+        "non_null_count": 178385,
+        "null_fraction": 0.0846
+      },
+      {
+        "column": "fk_aao",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 176981,
+        "null_fraction": 0.0919
+      },
+      {
+        "column": "disallowance",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 176161,
+        "null_fraction": 0.0961
+      },
+      {
+        "column": "recoveries",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 176085,
+        "null_fraction": 0.0964
+      },
+      {
+        "column": "dv_no",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 174301,
+        "null_fraction": 0.1056
+      },
+      {
+        "column": "dp_sheet_no",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 174301,
+        "null_fraction": 0.1056
+      },
+      {
+        "column": "fk_unit",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "unit",
+        "non_null_count": 169795,
+        "null_fraction": 0.1287
+      },
+      {
+        "column": "unit_code",
+        "data_type": "character varying(14)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "vendor_name",
+        "data_type": "character varying(200)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "vendor_address",
+        "data_type": "character varying(200)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "vendor_code",
+        "data_type": "character varying(20)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "vendor_pincode",
+        "data_type": "character varying(6)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "vendor_enc_bank_account",
+        "data_type": "character varying(60)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "vendor_enc_bank_ifsc",
+        "data_type": "character varying(30)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "vendor_pan",
+        "data_type": "character varying(10)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "vendor_gstn",
+        "data_type": "character varying(15)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 192634,
+        "null_fraction": 0.0115
+      },
+      {
+        "column": "sub_office_code",
+        "data_type": "character varying(4)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 188500,
+        "null_fraction": 0.0327
+      },
+      {
+        "column": "payment_status",
+        "data_type": "character varying(10)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 187488,
+        "null_fraction": 0.0379
+      },
+      {
+        "column": "make_type",
+        "data_type": "character(1)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 122066,
+        "null_fraction": 0.3736
+      },
+      {
+        "column": "order_id",
+        "data_type": "character varying(25)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "transaction_id",
+        "data_type": "character varying(100)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "buyer_org",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "buyer_name",
+        "data_type": "character varying(200)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "buyer_address",
+        "data_type": "character varying(200)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "cda_code",
+        "data_type": "character varying(2)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "supply_order_no",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "designation_financial",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "ifd_concurrance",
+        "data_type": "character(1)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "invoice_no",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "crac_no",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "payment_by",
+        "data_type": "character varying(10)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "gem_invoice_no",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "bill_no",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "sub_cat_id",
+        "data_type": "character varying(3)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "buyer_district",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "buyer_email",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "buyer_mobile",
+        "data_type": "character varying(15)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "buyer_pincode",
+        "data_type": "character varying(6)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "buyer_state",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "seller_id",
+        "data_type": "character varying(100)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "demand_id",
+        "data_type": "character varying(200)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194872,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "receipt_no",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 194870,
+        "null_fraction": 0.0001
+      },
+      {
+        "column": "honeyb_bill_response",
+        "data_type": "character varying(10)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 190208,
+        "null_fraction": 0.024
+      },
+      {
+        "column": "is_ulpo",
+        "data_type": "character varying(5)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 188498,
+        "null_fraction": 0.0328
+      },
+      {
+        "column": "transaction_month",
+        "data_type": "character varying(7)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 188390,
+        "null_fraction": 0.0333
+      },
+      {
+        "column": "honeyb_response",
+        "data_type": "character varying(10)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 187481,
+        "null_fraction": 0.038
+      },
+      {
+        "column": "failure_reason",
+        "data_type": "text",
+        "key": "",
+        "references": "None",
+        "non_null_count": 187178,
+        "null_fraction": 0.0395
+      },
+      {
+        "column": "remarks",
+        "data_type": "text",
+        "key": "",
+        "references": "None",
+        "non_null_count": 186439,
+        "null_fraction": 0.0433
+      },
+      {
+        "column": "ifd_diary_no",
+        "data_type": "character varying(200)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 186204,
+        "null_fraction": 0.0445
+      },
+      {
+        "column": "provisional_payment",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 184875,
+        "null_fraction": 0.0513
+      },
+      {
+        "column": "deduction",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 176161,
+        "null_fraction": 0.0961
+      },
+      {
+        "column": "dv_month",
+        "data_type": "character varying(7)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 174301,
+        "null_fraction": 0.1056
+      },
+      {
+        "column": "cmp_batch",
+        "data_type": "character varying(25)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 174301,
+        "null_fraction": 0.1056
+      },
+      {
+        "column": "payment_reference_no",
+        "data_type": "character varying(12)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 174301,
+        "null_fraction": 0.1056
+      },
+      {
+        "column": "utr_no",
+        "data_type": "character varying(20)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 173568,
+        "null_fraction": 0.1094
+      },
+      {
+        "column": "capital_id",
+        "data_type": "character varying(15)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 154788,
+        "null_fraction": 0.2057
+      },
+      {
+        "column": "buyer_gstn",
+        "data_type": "character varying(15)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 129133,
+        "null_fraction": 0.3374
+      },
+      {
+        "column": "msme",
+        "data_type": "character(1)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 122148,
+        "null_fraction": 0.3732
+      }
+    ],
+    "removed_sparse_columns": [
+      {
+        "column": "version",
+        "data_type": "character varying(5)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "project_code",
+        "data_type": "character varying(14)",
+        "key": "",
+        "non_null_count": 58,
+        "null_fraction": 0.9997
+      },
+      {
+        "column": "code_head",
+        "data_type": "character varying(9)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "sub_category",
+        "data_type": "character varying(50)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "vendor_district",
+        "data_type": "character varying(30)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "vendor_state",
+        "data_type": "character varying(50)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "vendor_bank_account_no",
+        "data_type": "character varying(25)",
+        "key": "",
+        "non_null_count": 18752,
+        "null_fraction": 0.9038
+      },
+      {
+        "column": "vendor_bank_ifsc_code",
+        "data_type": "character varying(11)",
+        "key": "",
+        "non_null_count": 18752,
+        "null_fraction": 0.9038
+      },
+      {
+        "column": "sanction_no",
+        "data_type": "character varying(100)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "sanction_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "product_code",
+        "data_type": "character varying(20)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "product_name",
+        "data_type": "character varying(200)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "product_brand",
+        "data_type": "character varying(200)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "quantity_ordered",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "unit_price",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "total_value",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "quantity_unit_type",
+        "data_type": "character varying(25)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "supplied_quantity",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "accepted_quantity",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "frieght_charge",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "ld_days",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 4283,
+        "null_fraction": 0.978
+      },
+      {
+        "column": "ld_amount",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 4343,
+        "null_fraction": 0.9777
+      },
+      {
+        "column": "expected_delivery_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "actual_delivery_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "prc_no",
+        "data_type": "character varying(50)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "prc_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_ao",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 21304,
+        "null_fraction": 0.8907
+      },
+      {
+        "column": "ao_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 21305,
+        "null_fraction": 0.8907
+      },
+      {
+        "column": "fk_go",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 14175,
+        "null_fraction": 0.9273
+      },
+      {
+        "column": "go_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 14176,
+        "null_fraction": 0.9273
+      },
+      {
+        "column": "reason",
+        "data_type": "text",
+        "key": "",
+        "non_null_count": 14011,
+        "null_fraction": 0.9281
+      },
+      {
+        "column": "gst5_amount",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "gst12_amount",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "gst18_amount",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "gst28_amount",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "gst_type",
+        "data_type": "character(1)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "dp_short_name",
+        "data_type": "character varying(100)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "order_status",
+        "data_type": "character varying(100)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "rejected_bill_no",
+        "data_type": "character varying(100)",
+        "key": "",
+        "non_null_count": 875,
+        "null_fraction": 0.9955
+      },
+      {
+        "column": "section_code",
+        "data_type": "integer",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "pp_processed_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 1614,
+        "null_fraction": 0.9917
+      },
+      {
+        "column": "pp_regularized_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "pp_sanction_no",
+        "data_type": "character varying(100)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "pp_sanction_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "sdac_number",
+        "data_type": "character varying(255)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "sdac_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "crac_number",
+        "data_type": "character varying(255)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "billing_cycle",
+        "data_type": "character varying(255)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "svc_applicable",
+        "data_type": "character varying(10)",
+        "key": "",
+        "non_null_count": 23897,
+        "null_fraction": 0.8774
+      },
+      {
+        "column": "fk_central_beneficiary",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 15723,
+        "null_fraction": 0.9193
+      },
+      {
+        "column": "fk_central_vendor",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 15723,
+        "null_fraction": 0.9193
+      },
+      {
+        "column": "generated",
+        "data_type": "boolean",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "excess_applicable",
+        "data_type": "character varying(10)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      }
+    ]
+  },
+  {
+    "table": "gem_product",
+    "row_count": 507983,
+    "column_count": 41,
+    "usable_column_count": 32,
+    "sparse_column_fraction": 0.2195,
+    "score": 74.0195,
+    "primary_keys": [
+      "id:integer:PK:nn=100%"
+    ],
+    "amount_candidates": [
+      "freight_sgst:double precision:nn=100%",
+      "freight_cgst:double precision:nn=100%",
+      "cgst:double precision:nn=100%",
+      "sgst:double precision:nn=100%",
+      "utgst:double precision:nn=100%",
+      "igst:double precision:nn=100%",
+      "freight_utgst:double precision:nn=98%",
+      "freight_igst:double precision:nn=98%"
+    ],
+    "date_candidates": [
+      "expected_delivery_date:date:nn=100%",
+      "actual_delivery_date:date:nn=100%"
+    ],
+    "context_candidates": [
+      "unit_price:double precision:nn=100%",
+      "fk_consignment_detail:bigint:FK->consignment_detail:nn=100%",
+      "fk_gem_bill:bigint:FK->gem_bill:nn=69%",
+      "quantity_unit_type:character varying(25):nn=100%",
+      "offering_type:character varying(10):nn=54%"
+    ],
+    "status_candidates": [],
+    "business_priority": true,
+    "relationship_context": [
+      {
+        "source_fk": "fk_gem_bill",
+        "referenced_table": "gem_bill",
+        "join_rule": "gem_product.fk_gem_bill = gem_bill.id",
+        "referenced_columns": [
+          "record_status:character(1):nn=100%",
+          "approved:boolean:nn=100%",
+          "id:bigint:PK:nn=100%",
+          "supply_order_date:date:nn=100%",
+          "ifd_diary_date:date:nn=100%",
+          "sanction_date:date:nn=100%",
+          "bill_amount:double precision:nn=100%",
+          "ld_amount:double precision:nn=100%"
+        ]
+      }
+    ],
+    "validation_context": [],
+    "full_usable_columns_for_stage_2": [
+      {
+        "column": "id",
+        "data_type": "integer",
+        "key": "PK",
+        "references": "None",
+        "non_null_count": 507983,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "expected_delivery_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "actual_delivery_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "freight_sgst",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "freight_cgst",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "cgst",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507695,
+        "null_fraction": 0.0006
+      },
+      {
+        "column": "sgst",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507625,
+        "null_fraction": 0.0007
+      },
+      {
+        "column": "utgst",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 506041,
+        "null_fraction": 0.0038
+      },
+      {
+        "column": "igst",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 506038,
+        "null_fraction": 0.0038
+      },
+      {
+        "column": "freight_utgst",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 497424,
+        "null_fraction": 0.0208
+      },
+      {
+        "column": "freight_igst",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 497424,
+        "null_fraction": 0.0208
+      },
+      {
+        "column": "quantity_ordered",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "unit_price",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "total_value",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507983,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "supplied_quantity",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "accepted_quantity",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "frieght_charge",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507983,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "cess",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507983,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "freight_cess",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_consignment_detail",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "consignment_detail",
+        "non_null_count": 507981,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_gem_bill",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "gem_bill",
+        "non_null_count": 348359,
+        "null_fraction": 0.3142
+      },
+      {
+        "column": "quantity_unit_type",
+        "data_type": "character varying(25)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "offering_type",
+        "data_type": "character varying(10)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 276368,
+        "null_fraction": 0.456
+      },
+      {
+        "column": "transaction_id",
+        "data_type": "character varying(100)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507982,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "product_code",
+        "data_type": "character varying(200)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "product_name",
+        "data_type": "character varying(200)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "product_brand",
+        "data_type": "character varying(200)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507973,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "code_head",
+        "data_type": "character varying(9)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507983,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "sub_cat_id",
+        "data_type": "character varying(3)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 507983,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "sub_category",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 368843,
+        "null_fraction": 0.2739
+      },
+      {
+        "column": "tds_under_gst",
+        "data_type": "character varying(10)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 276353,
+        "null_fraction": 0.456
+      },
+      {
+        "column": "tds_under_incometax",
+        "data_type": "character varying(10)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 276353,
+        "null_fraction": 0.456
+      }
+    ],
+    "removed_sparse_columns": [
+      {
+        "column": "project_code",
+        "data_type": "character varying(14)",
+        "key": "",
+        "non_null_count": 328,
+        "null_fraction": 0.9994
+      },
+      {
+        "column": "hsn_code",
+        "data_type": "character varying(100)",
+        "key": "",
+        "non_null_count": 50710,
+        "null_fraction": 0.9002
+      },
+      {
+        "column": "product_category_id",
+        "data_type": "text",
+        "key": "",
+        "non_null_count": 10,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "product_category_name",
+        "data_type": "text",
+        "key": "",
+        "non_null_count": 10,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "contract_start_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 10,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "contract_end_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 10,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "invoice_from_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 10,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "invoice_to_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 10,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "type_of_service_bill",
+        "data_type": "character varying(20)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      }
+    ]
+  },
+  {
+    "table": "cheque_slip",
+    "row_count": 1590650,
+    "column_count": 37,
+    "usable_column_count": 29,
+    "sparse_column_fraction": 0.2162,
+    "score": 76.0764,
+    "primary_keys": [
+      "id:bigint:PK:nn=100%"
+    ],
+    "amount_candidates": [
+      "amount:double precision:nn=100%"
+    ],
+    "date_candidates": [
+      "cheque_slip_date:date:nn=100%",
+      "auditor_date:date:nn=82%",
+      "aao_date:date:nn=76%",
+      "ao_date:date:nn=63%",
+      "created_at:timestamp without time zone:nn=61%",
+      "email_date:timestamp without time zone:nn=26%"
+    ],
+    "context_candidates": [
+      "record_status:character(1):nn=100%",
+      "fk_dak:bigint:FK->dak:nn=100%",
+      "fk_ecs_payment_mode:integer:FK->ecs_payment_mode:nn=100%",
+      "fk_office_id:integer:FK->dad_office:nn=100%",
+      "fk_central_unit:integer:FK->aaa_central_unit:nn=100%",
+      "fk_unit:integer:FK->unit:nn=89%",
+      "fk_central_beneficiary:integer:FK->aaa_central_beneficiary:nn=88%",
+      "fk_central_favour_bank:integer:FK->aaa_central_bank:nn=88%",
+      "fk_auditor:integer:FK->usr:nn=82%",
+      "fk_favour_bank:integer:FK->bank:nn=79%",
+      "fk_bank_pan_detail:bigint:FK->bank_pan_detail:nn=79%",
+      "fk_aao:integer:FK->usr:nn=76%",
+      "fk_ao:integer:FK->usr:nn=63%",
+      "fk_central_vendor:integer:FK->aaa_central_vendor:nn=47%"
+    ],
+    "status_candidates": [
+      "approved:boolean:nn=100%",
+      "record_status:character(1):nn=100%"
+    ],
+    "business_priority": true,
+    "relationship_context": [
+      {
+        "source_fk": "fk_dak",
+        "referenced_table": "dak",
+        "join_rule": "cheque_slip.fk_dak = dak.id",
+        "referenced_columns": [
+          "record_status:character(1):nn=100%",
+          "id:bigint:PK:nn=100%",
+          "reference_date:date:nn=100%",
+          "bill_date:date:nn=100%",
+          "amount:double precision:nn=100%",
+          "disposal_date:date:nn=100%",
+          "created_at:timestamp without time zone:nn=100%",
+          "list_date:date:nn=100%"
+        ]
+      },
+      {
+        "source_fk": "fk_dak",
+        "referenced_table": "dak_payment_siblings",
+        "join_rule": "Join payment stages with dak.id = <stage>.fk_dak.",
+        "referenced_columns": [
+          "dak.id",
+          "gem_bill.fk_dak",
+          "cheque_slip.fk_dak",
+          "punching_medium.fk_dak",
+          "schedule3.fk_dak",
+          "ecs.fk_dak"
+        ]
+      }
+    ],
+    "validation_context": [],
+    "full_usable_columns_for_stage_2": [
+      {
+        "column": "approved",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1590650,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "record_status",
+        "data_type": "character(1)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1590650,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "id",
+        "data_type": "bigint",
+        "key": "PK",
+        "references": "None",
+        "non_null_count": 1590650,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "amount",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1590650,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "cheque_slip_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1590650,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "auditor_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1301462,
+        "null_fraction": 0.1818
+      },
+      {
+        "column": "aao_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1212676,
+        "null_fraction": 0.2376
+      },
+      {
+        "column": "ao_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1007100,
+        "null_fraction": 0.3669
+      },
+      {
+        "column": "created_at",
+        "data_type": "timestamp without time zone",
+        "key": "",
+        "references": "None",
+        "non_null_count": 971565,
+        "null_fraction": 0.3892
+      },
+      {
+        "column": "email_date",
+        "data_type": "timestamp without time zone",
+        "key": "",
+        "references": "None",
+        "non_null_count": 409274,
+        "null_fraction": 0.7427
+      },
+      {
+        "column": "fk_dak",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "dak",
+        "non_null_count": 1590607,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_ecs_payment_mode",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "ecs_payment_mode",
+        "non_null_count": 1590650,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_office_id",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "dad_office",
+        "non_null_count": 1590650,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_central_unit",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "aaa_central_unit",
+        "non_null_count": 1583222,
+        "null_fraction": 0.0047
+      },
+      {
+        "column": "dv_no",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1482015,
+        "null_fraction": 0.0683
+      },
+      {
+        "column": "dp_sheet_no",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1481927,
+        "null_fraction": 0.0684
+      },
+      {
+        "column": "fk_unit",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "unit",
+        "non_null_count": 1419149,
+        "null_fraction": 0.1078
+      },
+      {
+        "column": "fk_central_beneficiary",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "aaa_central_beneficiary",
+        "non_null_count": 1402335,
+        "null_fraction": 0.1184
+      },
+      {
+        "column": "fk_central_favour_bank",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "aaa_central_bank",
+        "non_null_count": 1402109,
+        "null_fraction": 0.1185
+      },
+      {
+        "column": "fk_auditor",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 1301462,
+        "null_fraction": 0.1818
+      },
+      {
+        "column": "fk_favour_bank",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "bank",
+        "non_null_count": 1256570,
+        "null_fraction": 0.21
+      },
+      {
+        "column": "fk_bank_pan_detail",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "bank_pan_detail",
+        "non_null_count": 1256564,
+        "null_fraction": 0.21
+      },
+      {
+        "column": "fk_aao",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 1212675,
+        "null_fraction": 0.2376
+      },
+      {
+        "column": "fk_ao",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 1007101,
+        "null_fraction": 0.3669
+      },
+      {
+        "column": "fk_central_vendor",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "aaa_central_vendor",
+        "non_null_count": 746352,
+        "null_fraction": 0.5308
+      },
+      {
+        "column": "fk_vendor",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "vendor",
+        "non_null_count": 640749,
+        "null_fraction": 0.5972
+      },
+      {
+        "column": "payment_detail",
+        "data_type": "text",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1590650,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "selected",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 797797,
+        "null_fraction": 0.4984
+      },
+      {
+        "column": "email_sent",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 409274,
+        "null_fraction": 0.7427
+      }
+    ],
+    "removed_sparse_columns": [
+      {
+        "column": "fk_treasury_bank",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 509,
+        "null_fraction": 0.9997
+      },
+      {
+        "column": "account_no",
+        "data_type": "character varying(18)",
+        "key": "",
+        "non_null_count": 190367,
+        "null_fraction": 0.8803
+      },
+      {
+        "column": "npb_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 94459,
+        "null_fraction": 0.9406
+      },
+      {
+        "column": "schedule3_item_no",
+        "data_type": "integer",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_schedule3",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "ind_npb_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 222,
+        "null_fraction": 0.9999
+      },
+      {
+        "column": "fk_consolidated_dak",
+        "data_type": "bigint",
+        "key": "FK",
+        "non_null_count": 109,
+        "null_fraction": 0.9999
+      },
+      {
+        "column": "fk_central_treasury_bank",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 524,
+        "null_fraction": 0.9997
+      }
+    ]
+  },
+  {
+    "table": "punching_medium",
+    "row_count": 3158275,
+    "column_count": 70,
+    "usable_column_count": 39,
+    "sparse_column_fraction": 0.4429,
+    "score": 67.2607,
+    "primary_keys": [
+      "id:bigint:PK:nn=100%"
+    ],
+    "amount_candidates": [
+      "amount:double precision:nn=100%"
+    ],
+    "date_candidates": [
+      "pm_date:date:nn=100%",
+      "created_at:timestamp without time zone:nn=100%",
+      "auditor_date:date:nn=94%",
+      "upload_file_gen_date:date:nn=88%",
+      "aao_date:date:nn=75%",
+      "ao_date:date:nn=37%"
+    ],
+    "context_candidates": [
+      "record_status:character(1):nn=100%",
+      "fk_dak:bigint:FK->dak:nn=100%",
+      "fk_section:integer:FK->section:nn=100%",
+      "pm_section:integer:nn=100%",
+      "fk_office_id:integer:FK->dad_office:nn=100%",
+      "fk_central_unit:integer:FK->aaa_central_unit:nn=100%",
+      "fk_auditor:integer:FK->usr:nn=94%",
+      "fk_unit:integer:FK->unit:nn=92%",
+      "fk_aao:integer:FK->usr:nn=75%",
+      "fk_ao:integer:FK->usr:nn=37%",
+      "fk_dad_office:integer:FK->dad_office:nn=22%"
+    ],
+    "status_candidates": [
+      "approved:boolean:nn=100%",
+      "record_status:character(1):nn=100%"
+    ],
+    "business_priority": true,
+    "relationship_context": [
+      {
+        "source_fk": "fk_dak",
+        "referenced_table": "dak",
+        "join_rule": "punching_medium.fk_dak = dak.id",
+        "referenced_columns": [
+          "record_status:character(1):nn=100%",
+          "id:bigint:PK:nn=100%",
+          "reference_date:date:nn=100%",
+          "bill_date:date:nn=100%",
+          "amount:double precision:nn=100%",
+          "disposal_date:date:nn=100%",
+          "created_at:timestamp without time zone:nn=100%",
+          "list_date:date:nn=100%"
+        ]
+      },
+      {
+        "source_fk": "fk_dak",
+        "referenced_table": "dak_payment_siblings",
+        "join_rule": "Join payment stages with dak.id = <stage>.fk_dak.",
+        "referenced_columns": [
+          "dak.id",
+          "gem_bill.fk_dak",
+          "cheque_slip.fk_dak",
+          "punching_medium.fk_dak",
+          "schedule3.fk_dak",
+          "ecs.fk_dak"
+        ]
+      }
+    ],
+    "validation_context": [],
+    "full_usable_columns_for_stage_2": [
+      {
+        "column": "approved",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158275,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "record_status",
+        "data_type": "character(1)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158274,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "id",
+        "data_type": "bigint",
+        "key": "PK",
+        "references": "None",
+        "non_null_count": 3158275,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "amount",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158274,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "pm_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158274,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "created_at",
+        "data_type": "timestamp without time zone",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158274,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "auditor_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2983355,
+        "null_fraction": 0.0554
+      },
+      {
+        "column": "upload_file_gen_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2784803,
+        "null_fraction": 0.1183
+      },
+      {
+        "column": "aao_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2356344,
+        "null_fraction": 0.2539
+      },
+      {
+        "column": "ao_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1156846,
+        "null_fraction": 0.6337
+      },
+      {
+        "column": "fk_dak",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "dak",
+        "non_null_count": 3158266,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_section",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "section",
+        "non_null_count": 3158274,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "pm_section",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158213,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "cda_code",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158274,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "voucher_class",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158274,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_office_id",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "dad_office",
+        "non_null_count": 3158275,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_central_unit",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "aaa_central_unit",
+        "non_null_count": 3148440,
+        "null_fraction": 0.0031
+      },
+      {
+        "column": "fk_auditor",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 2983355,
+        "null_fraction": 0.0554
+      },
+      {
+        "column": "fk_unit",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "unit",
+        "non_null_count": 2920041,
+        "null_fraction": 0.0754
+      },
+      {
+        "column": "voucher_no",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2792068,
+        "null_fraction": 0.116
+      },
+      {
+        "column": "fk_aao",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 2356344,
+        "null_fraction": 0.2539
+      },
+      {
+        "column": "fk_ao",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 1156846,
+        "null_fraction": 0.6337
+      },
+      {
+        "column": "budget_allotment",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 752135,
+        "null_fraction": 0.7619
+      },
+      {
+        "column": "fk_dad_office",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "dad_office",
+        "non_null_count": 708395,
+        "null_fraction": 0.7757
+      },
+      {
+        "column": "pm_month_year",
+        "data_type": "character varying(7)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158219,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "category_head",
+        "data_type": "character varying(2)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158274,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "code_head",
+        "data_type": "character varying(3)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158274,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "detail_head",
+        "data_type": "character varying(2)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158274,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "sign_rc",
+        "data_type": "character varying(2)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158240,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "neft_generated",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158275,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "detail_code_head",
+        "data_type": "character varying(9)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3158274,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "cancelled",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3063358,
+        "null_fraction": 0.0301
+      },
+      {
+        "column": "naration",
+        "data_type": "text",
+        "key": "",
+        "references": "None",
+        "non_null_count": 3020449,
+        "null_fraction": 0.0436
+      },
+      {
+        "column": "dpsheet_generated",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2869340,
+        "null_fraction": 0.0915
+      },
+      {
+        "column": "upload_file_generated",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2849240,
+        "null_fraction": 0.0978
+      },
+      {
+        "column": "cmp_batch",
+        "data_type": "character varying(25)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2817798,
+        "null_fraction": 0.1078
+      },
+      {
+        "column": "upload_batch",
+        "data_type": "character varying(20)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2791890,
+        "null_fraction": 0.116
+      },
+      {
+        "column": "ncs_transaction_id",
+        "data_type": "character varying(25)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2791407,
+        "null_fraction": 0.1162
+      },
+      {
+        "column": "gst_parent_code_head",
+        "data_type": "character varying(9)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1080542,
+        "null_fraction": 0.6579
+      }
+    ],
+    "removed_sparse_columns": [
+      {
+        "column": "batch_no",
+        "data_type": "integer",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "responding_cda_code",
+        "data_type": "integer",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "responding_cda_section",
+        "data_type": "integer",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "passed",
+        "data_type": "boolean",
+        "key": "",
+        "non_null_count": 36668,
+        "null_fraction": 0.9884
+      },
+      {
+        "column": "fk_dids",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "imprest_account",
+        "data_type": "integer",
+        "key": "",
+        "non_null_count": 1900,
+        "null_fraction": 0.9994
+      },
+      {
+        "column": "fk_go",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 458247,
+        "null_fraction": 0.8549
+      },
+      {
+        "column": "fk_jcda",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 7011,
+        "null_fraction": 0.9978
+      },
+      {
+        "column": "go_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 458247,
+        "null_fraction": 0.8549
+      },
+      {
+        "column": "jcda_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 7011,
+        "null_fraction": 0.9978
+      },
+      {
+        "column": "reason",
+        "data_type": "text",
+        "key": "",
+        "non_null_count": 10455,
+        "null_fraction": 0.9967
+      },
+      {
+        "column": "fk_consolidated_dak",
+        "data_type": "bigint",
+        "key": "FK",
+        "non_null_count": 276,
+        "null_fraction": 0.9999
+      },
+      {
+        "column": "verified_with_aic",
+        "data_type": "boolean",
+        "key": "",
+        "non_null_count": 59507,
+        "null_fraction": 0.9812
+      },
+      {
+        "column": "fk_allotment_detail",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 503,
+        "null_fraction": 0.9998
+      },
+      {
+        "column": "project_code",
+        "data_type": "character varying(14)",
+        "key": "",
+        "non_null_count": 51230,
+        "null_fraction": 0.9838
+      },
+      {
+        "column": "ucc_code",
+        "data_type": "character varying(6)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_allotment_category",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 210702,
+        "null_fraction": 0.9333
+      },
+      {
+        "column": "fund_availability_before",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fund_availability_after",
+        "data_type": "double precision",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "value1",
+        "data_type": "character varying(100)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "value2",
+        "data_type": "character varying(50)",
+        "key": "",
+        "non_null_count": 201184,
+        "null_fraction": 0.9363
+      },
+      {
+        "column": "int_number1",
+        "data_type": "integer",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "int_number2",
+        "data_type": "integer",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_cda",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 1550,
+        "null_fraction": 0.9995
+      },
+      {
+        "column": "cda_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 1550,
+        "null_fraction": 0.9995
+      },
+      {
+        "column": "nature",
+        "data_type": "character varying(10)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "ncs_old_transaction_id",
+        "data_type": "character varying(25)",
+        "key": "",
+        "non_null_count": 4,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "ncs_response",
+        "data_type": "character varying(10)",
+        "key": "",
+        "non_null_count": 308577,
+        "null_fraction": 0.9023
+      },
+      {
+        "column": "old_upload_batch",
+        "data_type": "character varying(15)",
+        "key": "",
+        "non_null_count": 4,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "ncs_remarks",
+        "data_type": "character varying(200)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "capital_id",
+        "data_type": "character varying(15)",
+        "key": "",
+        "non_null_count": 124,
+        "null_fraction": 1.0
+      }
+    ]
+  },
+  {
+    "table": "schedule3",
+    "row_count": 1593012,
+    "column_count": 64,
+    "usable_column_count": 19,
+    "sparse_column_fraction": 0.7031,
+    "score": 43.35,
+    "primary_keys": [
+      "id:bigint:PK:nn=100%"
+    ],
+    "amount_candidates": [
+      "schedule3_amount:double precision:nn=100%"
+    ],
+    "date_candidates": [
+      "created_at:timestamp without time zone:nn=100%",
+      "dp_sheet_date:date:nn=93%"
+    ],
+    "context_candidates": [
+      "record_status:character(1):nn=100%",
+      "fk_section:integer:FK->section:nn=100%",
+      "fk_office_id:integer:FK->dad_office:nn=100%",
+      "section_code:integer:nn=100%",
+      "fk_dak:bigint:FK->dak:nn=93%",
+      "fk_cheque_slip:bigint:FK->cheque_slip:nn=93%",
+      "fk_dad_office:integer:FK->dad_office:nn=58%",
+      "transcription_type:character(1):nn=100%"
+    ],
+    "status_candidates": [
+      "approved:boolean:nn=100%",
+      "record_status:character(1):nn=100%"
+    ],
+    "business_priority": true,
+    "relationship_context": [
+      {
+        "source_fk": "fk_cheque_slip",
+        "referenced_table": "cheque_slip",
+        "join_rule": "schedule3.fk_cheque_slip = cheque_slip.id",
+        "referenced_columns": [
+          "approved:boolean:nn=100%",
+          "record_status:character(1):nn=100%",
+          "id:bigint:PK:nn=100%",
+          "amount:double precision:nn=100%",
+          "npb_date:date:nn=100%",
+          "cheque_slip_date:date:nn=100%",
+          "auditor_date:date:nn=100%",
+          "aao_date:date:nn=100%"
+        ]
+      },
+      {
+        "source_fk": "fk_dak",
+        "referenced_table": "dak",
+        "join_rule": "schedule3.fk_dak = dak.id",
+        "referenced_columns": [
+          "record_status:character(1):nn=100%",
+          "id:bigint:PK:nn=100%",
+          "reference_date:date:nn=100%",
+          "bill_date:date:nn=100%",
+          "amount:double precision:nn=100%",
+          "disposal_date:date:nn=100%",
+          "created_at:timestamp without time zone:nn=100%",
+          "list_date:date:nn=100%"
+        ]
+      },
+      {
+        "source_fk": "fk_dak",
+        "referenced_table": "dak_payment_siblings",
+        "join_rule": "Join payment stages with dak.id = <stage>.fk_dak.",
+        "referenced_columns": [
+          "dak.id",
+          "gem_bill.fk_dak",
+          "cheque_slip.fk_dak",
+          "punching_medium.fk_dak",
+          "schedule3.fk_dak",
+          "ecs.fk_dak"
+        ]
+      }
+    ],
+    "validation_context": [],
+    "full_usable_columns_for_stage_2": [
+      {
+        "column": "approved",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1593012,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "record_status",
+        "data_type": "character(1)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1593012,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "id",
+        "data_type": "bigint",
+        "key": "PK",
+        "references": "None",
+        "non_null_count": 1593012,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "schedule3_amount",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1593012,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "created_at",
+        "data_type": "timestamp without time zone",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1592985,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "dp_sheet_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1489379,
+        "null_fraction": 0.0651
+      },
+      {
+        "column": "fk_section",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "section",
+        "non_null_count": 1593012,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_office_id",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "dad_office",
+        "non_null_count": 1593012,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "section_code",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1592986,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "dv_no_from",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1531212,
+        "null_fraction": 0.0388
+      },
+      {
+        "column": "dv_no_to",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1528404,
+        "null_fraction": 0.0406
+      },
+      {
+        "column": "dp_sheet_no",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1489379,
+        "null_fraction": 0.0651
+      },
+      {
+        "column": "schedule3_item_no",
+        "data_type": "integer",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1489379,
+        "null_fraction": 0.0651
+      },
+      {
+        "column": "fk_dak",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "dak",
+        "non_null_count": 1489379,
+        "null_fraction": 0.0651
+      },
+      {
+        "column": "fk_cheque_slip",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "cheque_slip",
+        "non_null_count": 1482203,
+        "null_fraction": 0.0696
+      },
+      {
+        "column": "fk_dad_office",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "dad_office",
+        "non_null_count": 917074,
+        "null_fraction": 0.4243
+      },
+      {
+        "column": "transcription_type",
+        "data_type": "character(1)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1592985,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "month",
+        "data_type": "character varying(7)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1593012,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "cmp_batch",
+        "data_type": "character varying(25)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 1481350,
+        "null_fraction": 0.0701
+      }
+    ],
+    "removed_sparse_columns": [
+      {
+        "column": "npb_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 80874,
+        "null_fraction": 0.9492
+      },
+      {
+        "column": "cheque_no",
+        "data_type": "character varying(25)",
+        "key": "",
+        "non_null_count": 104036,
+        "null_fraction": 0.9347
+      },
+      {
+        "column": "cheque_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 104036,
+        "null_fraction": 0.9347
+      },
+      {
+        "column": "cheque_status",
+        "data_type": "character(1)",
+        "key": "",
+        "non_null_count": 104010,
+        "null_fraction": 0.9347
+      },
+      {
+        "column": "remarks",
+        "data_type": "text",
+        "key": "",
+        "non_null_count": 103633,
+        "null_fraction": 0.9349
+      },
+      {
+        "column": "fk_auditor",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 103949,
+        "null_fraction": 0.9347
+      },
+      {
+        "column": "fk_aao",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 94,
+        "null_fraction": 0.9999
+      },
+      {
+        "column": "fk_ao",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 27,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "auditor_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 103949,
+        "null_fraction": 0.9347
+      },
+      {
+        "column": "aao_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 94,
+        "null_fraction": 0.9999
+      },
+      {
+        "column": "ao_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 27,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "linked_with_scroll",
+        "data_type": "boolean",
+        "key": "",
+        "non_null_count": 103778,
+        "null_fraction": 0.9349
+      },
+      {
+        "column": "fk_ecs_payment_mode",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 35229,
+        "null_fraction": 0.9779
+      },
+      {
+        "column": "treasury_bank_acno",
+        "data_type": "character varying(20)",
+        "key": "",
+        "non_null_count": 402,
+        "null_fraction": 0.9997
+      },
+      {
+        "column": "treasury_bank_ifsc",
+        "data_type": "character varying(11)",
+        "key": "",
+        "non_null_count": 402,
+        "null_fraction": 0.9997
+      },
+      {
+        "column": "fk_unit",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 31465,
+        "null_fraction": 0.9802
+      },
+      {
+        "column": "fk_vendor",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 417,
+        "null_fraction": 0.9997
+      },
+      {
+        "column": "fk_sh3_usr",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_auditor_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 1,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "auditor_date_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 1,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_aao_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 5,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "aao_date_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 5,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_ao_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 5,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "ao_date_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 5,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_auditor_accounts_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "auditor_date_accounts_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_aao_accounts_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 5,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "aao_date_accounts_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 5,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_ao_accounts_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 5,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "ao_date_accounts_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 5,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "rejection_status",
+        "data_type": "character(1)",
+        "key": "",
+        "non_null_count": 5,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "rejection_approved_ds",
+        "data_type": "boolean",
+        "key": "",
+        "non_null_count": 35209,
+        "null_fraction": 0.9779
+      },
+      {
+        "column": "rejection_approved_as",
+        "data_type": "boolean",
+        "key": "",
+        "non_null_count": 35209,
+        "null_fraction": 0.9779
+      },
+      {
+        "column": "rejection_reason",
+        "data_type": "text",
+        "key": "",
+        "non_null_count": 398,
+        "null_fraction": 0.9998
+      },
+      {
+        "column": "cda13_no",
+        "data_type": "character varying(10)",
+        "key": "",
+        "non_null_count": 1,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "cda13_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "rejection_scroll_no",
+        "data_type": "character varying(20)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "rejection_scroll_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "beneficiary_detail_other_chq",
+        "data_type": "character varying(100)",
+        "key": "",
+        "non_null_count": 27,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_cda13_bpd",
+        "data_type": "bigint",
+        "key": "FK",
+        "non_null_count": 1,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "upload_batch",
+        "data_type": "character varying(20)",
+        "key": "",
+        "non_null_count": 183393,
+        "null_fraction": 0.8849
+      },
+      {
+        "column": "ncs_response_code",
+        "data_type": "character varying(3)",
+        "key": "",
+        "non_null_count": 182367,
+        "null_fraction": 0.8855
+      },
+      {
+        "column": "fk_cda13_central_beneficiary",
+        "data_type": "bigint",
+        "key": "FK",
+        "non_null_count": 1,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_central_unit",
+        "data_type": "bigint",
+        "key": "FK",
+        "non_null_count": 31477,
+        "null_fraction": 0.9802
+      },
+      {
+        "column": "fk_central_vendor",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 407,
+        "null_fraction": 0.9997
+      }
+    ]
+  },
+  {
+    "table": "ecs",
+    "row_count": 2982516,
+    "column_count": 64,
+    "usable_column_count": 33,
+    "sparse_column_fraction": 0.4844,
+    "score": 65.45,
+    "primary_keys": [
+      "id:bigint:PK:nn=100%"
+    ],
+    "amount_candidates": [
+      "amount:double precision:nn=100%"
+    ],
+    "date_candidates": [
+      "cmp_file_gen_date:date:nn=100%",
+      "created_at:timestamp without time zone:nn=100%",
+      "auditor_date:date:nn=100%",
+      "utr_date:date:nn=98%",
+      "scroll_date:date:nn=98%",
+      "aao_date:date:nn=92%",
+      "npb_date:date:nn=26%"
+    ],
+    "context_candidates": [
+      "record_status:character(1):nn=100%",
+      "fk_dak:bigint:FK->dak:nn=100%",
+      "fk_ecs_payment_mode:integer:FK->ecs_payment_mode:nn=100%",
+      "fk_schedule3:integer:FK->schedule3:nn=100%",
+      "fk_cheque_slip:bigint:FK->cheque_slip:nn=100%",
+      "fk_office_id:integer:FK->dad_office:nn=100%",
+      "fk_auditor:integer:FK->usr:nn=100%",
+      "fk_aao:integer:FK->usr:nn=92%",
+      "fk_central_beneficiary:bigint:FK->aaa_central_beneficiary:nn=67%",
+      "fk_bank_pan_detail:bigint:FK->bank_pan_detail:nn=61%",
+      "cmp_payment_status:character varying(2):nn=98%"
+    ],
+    "status_candidates": [
+      "record_status:character(1):nn=100%",
+      "approved:boolean:nn=94%",
+      "cmp_payment_status:character varying(2):nn=98%",
+      "released:boolean:nn=100%",
+      "cmp_rejection_reason:text:nn=83%"
+    ],
+    "business_priority": true,
+    "relationship_context": [
+      {
+        "source_fk": "fk_dak",
+        "referenced_table": "dak",
+        "join_rule": "ecs.fk_dak = dak.id",
+        "referenced_columns": [
+          "record_status:character(1):nn=100%",
+          "id:bigint:PK:nn=100%",
+          "reference_date:date:nn=100%",
+          "bill_date:date:nn=100%",
+          "amount:double precision:nn=100%",
+          "disposal_date:date:nn=100%",
+          "created_at:timestamp without time zone:nn=100%",
+          "list_date:date:nn=100%"
+        ]
+      },
+      {
+        "source_fk": "fk_schedule3",
+        "referenced_table": "schedule3",
+        "join_rule": "ecs.fk_schedule3 = schedule3.id",
+        "referenced_columns": [
+          "approved:boolean:nn=100%",
+          "record_status:character(1):nn=100%",
+          "id:bigint:PK:nn=100%",
+          "dp_sheet_date:date:nn=100%",
+          "schedule3_amount:double precision:nn=100%",
+          "npb_date:date:nn=100%",
+          "cheque_date:date:nn=100%",
+          "auditor_date:date:nn=100%"
+        ]
+      },
+      {
+        "source_fk": "fk_cheque_slip",
+        "referenced_table": "cheque_slip",
+        "join_rule": "ecs.fk_cheque_slip = cheque_slip.id",
+        "referenced_columns": [
+          "approved:boolean:nn=100%",
+          "record_status:character(1):nn=100%",
+          "id:bigint:PK:nn=100%",
+          "amount:double precision:nn=100%",
+          "npb_date:date:nn=100%",
+          "cheque_slip_date:date:nn=100%",
+          "auditor_date:date:nn=100%",
+          "aao_date:date:nn=100%"
+        ]
+      },
+      {
+        "source_fk": "fk_dak",
+        "referenced_table": "dak_payment_siblings",
+        "join_rule": "Join payment stages with dak.id = <stage>.fk_dak.",
+        "referenced_columns": [
+          "dak.id",
+          "gem_bill.fk_dak",
+          "cheque_slip.fk_dak",
+          "punching_medium.fk_dak",
+          "schedule3.fk_dak",
+          "ecs.fk_dak"
+        ]
+      }
+    ],
+    "validation_context": [],
+    "full_usable_columns_for_stage_2": [
+      {
+        "column": "record_status",
+        "data_type": "character(1)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2982515,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "approved",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2802961,
+        "null_fraction": 0.0602
+      },
+      {
+        "column": "id",
+        "data_type": "bigint",
+        "key": "PK",
+        "references": "None",
+        "non_null_count": 2982516,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "amount",
+        "data_type": "double precision",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2982514,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "cmp_file_gen_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2982513,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "created_at",
+        "data_type": "timestamp without time zone",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2982516,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "auditor_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2970432,
+        "null_fraction": 0.0041
+      },
+      {
+        "column": "utr_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2931856,
+        "null_fraction": 0.017
+      },
+      {
+        "column": "scroll_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2931849,
+        "null_fraction": 0.017
+      },
+      {
+        "column": "aao_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2731315,
+        "null_fraction": 0.0842
+      },
+      {
+        "column": "npb_date",
+        "data_type": "date",
+        "key": "",
+        "references": "None",
+        "non_null_count": 766301,
+        "null_fraction": 0.7431
+      },
+      {
+        "column": "fk_dak",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "dak",
+        "non_null_count": 2982513,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_ecs_payment_mode",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "ecs_payment_mode",
+        "non_null_count": 2982514,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_schedule3",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "schedule3",
+        "non_null_count": 2982512,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_cheque_slip",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "cheque_slip",
+        "non_null_count": 2982513,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_office_id",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "dad_office",
+        "non_null_count": 2982516,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "fk_auditor",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 2970432,
+        "null_fraction": 0.0041
+      },
+      {
+        "column": "fk_aao",
+        "data_type": "integer",
+        "key": "FK",
+        "references": "usr",
+        "non_null_count": 2731315,
+        "null_fraction": 0.0842
+      },
+      {
+        "column": "fk_central_beneficiary",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "aaa_central_beneficiary",
+        "non_null_count": 1997789,
+        "null_fraction": 0.3302
+      },
+      {
+        "column": "fk_bank_pan_detail",
+        "data_type": "bigint",
+        "key": "FK",
+        "references": "bank_pan_detail",
+        "non_null_count": 1819882,
+        "null_fraction": 0.3898
+      },
+      {
+        "column": "cmp_payment_status",
+        "data_type": "character varying(2)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2928183,
+        "null_fraction": 0.0182
+      },
+      {
+        "column": "month",
+        "data_type": "character varying(7)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2982514,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "payment_reference_no",
+        "data_type": "character varying(15)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2982513,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "to_be_paid",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2982516,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "file_no",
+        "data_type": "character varying(25)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2982513,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "released",
+        "data_type": "boolean",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2982516,
+        "null_fraction": 0.0
+      },
+      {
+        "column": "remarks",
+        "data_type": "text",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2961700,
+        "null_fraction": 0.007
+      },
+      {
+        "column": "cmp_reference_no",
+        "data_type": "character varying(20)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2931691,
+        "null_fraction": 0.017
+      },
+      {
+        "column": "scroll_no",
+        "data_type": "character varying(10)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2931853,
+        "null_fraction": 0.017
+      },
+      {
+        "column": "utr_no",
+        "data_type": "character varying(20)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2928419,
+        "null_fraction": 0.0181
+      },
+      {
+        "column": "cmp_rejection_reason",
+        "data_type": "text",
+        "key": "",
+        "references": "None",
+        "non_null_count": 2461154,
+        "null_fraction": 0.1748
+      },
+      {
+        "column": "echs_sid",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 811064,
+        "null_fraction": 0.7281
+      },
+      {
+        "column": "echs_claim_id",
+        "data_type": "character varying(50)",
+        "key": "",
+        "references": "None",
+        "non_null_count": 811064,
+        "null_fraction": 0.7281
+      }
+    ],
+    "removed_sparse_columns": [
+      {
+        "column": "fk_ecs_payment_type",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_ao",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 145530,
+        "null_fraction": 0.9512
+      },
+      {
+        "column": "ao_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 145530,
+        "null_fraction": 0.9512
+      },
+      {
+        "column": "fk_go",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 30845,
+        "null_fraction": 0.9897
+      },
+      {
+        "column": "go_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 30845,
+        "null_fraction": 0.9897
+      },
+      {
+        "column": "rollback",
+        "data_type": "boolean",
+        "key": "",
+        "non_null_count": 31215,
+        "null_fraction": 0.9895
+      },
+      {
+        "column": "fk_auditor_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 4025,
+        "null_fraction": 0.9987
+      },
+      {
+        "column": "auditor_date_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 4025,
+        "null_fraction": 0.9987
+      },
+      {
+        "column": "fk_aao_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 3760,
+        "null_fraction": 0.9987
+      },
+      {
+        "column": "aao_date_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 3760,
+        "null_fraction": 0.9987
+      },
+      {
+        "column": "fk_ao_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 4195,
+        "null_fraction": 0.9986
+      },
+      {
+        "column": "ao_date_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 4195,
+        "null_fraction": 0.9986
+      },
+      {
+        "column": "fk_auditor_accounts_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "auditor_date_accounts_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_aao_accounts_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 4137,
+        "null_fraction": 0.9986
+      },
+      {
+        "column": "aao_date_accounts_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 4137,
+        "null_fraction": 0.9986
+      },
+      {
+        "column": "fk_ao_accounts_rej",
+        "data_type": "integer",
+        "key": "FK",
+        "non_null_count": 4137,
+        "null_fraction": 0.9986
+      },
+      {
+        "column": "ao_date_accounts_rej",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 4137,
+        "null_fraction": 0.9986
+      },
+      {
+        "column": "rejection_status",
+        "data_type": "character(1)",
+        "key": "",
+        "non_null_count": 4247,
+        "null_fraction": 0.9986
+      },
+      {
+        "column": "rejection_approved_ds",
+        "data_type": "boolean",
+        "key": "",
+        "non_null_count": 4198,
+        "null_fraction": 0.9986
+      },
+      {
+        "column": "rejection_approved_as",
+        "data_type": "boolean",
+        "key": "",
+        "non_null_count": 4139,
+        "null_fraction": 0.9986
+      },
+      {
+        "column": "rejection_reason",
+        "data_type": "text",
+        "key": "",
+        "non_null_count": 319247,
+        "null_fraction": 0.893
+      },
+      {
+        "column": "cda13_no",
+        "data_type": "character varying(10)",
+        "key": "",
+        "non_null_count": 3947,
+        "null_fraction": 0.9987
+      },
+      {
+        "column": "cda13_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 192,
+        "null_fraction": 0.9999
+      },
+      {
+        "column": "rejection_scroll_no",
+        "data_type": "character varying(20)",
+        "key": "",
+        "non_null_count": 4142,
+        "null_fraction": 0.9986
+      },
+      {
+        "column": "rejection_scroll_date",
+        "data_type": "date",
+        "key": "",
+        "non_null_count": 4137,
+        "null_fraction": 0.9986
+      },
+      {
+        "column": "rollback_approved",
+        "data_type": "boolean",
+        "key": "",
+        "non_null_count": 30848,
+        "null_fraction": 0.9897
+      },
+      {
+        "column": "sub_office_code",
+        "data_type": "character varying(6)",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_cda13_bpd",
+        "data_type": "bigint",
+        "key": "FK",
+        "non_null_count": 3742,
+        "null_fraction": 0.9987
+      },
+      {
+        "column": "table_recoveries",
+        "data_type": "integer",
+        "key": "",
+        "non_null_count": 0,
+        "null_fraction": 1.0
+      },
+      {
+        "column": "fk_cda13_central_beneficiary",
+        "data_type": "bigint",
+        "key": "FK",
+        "non_null_count": 3931,
+        "null_fraction": 0.9987
+      }
+    ]
+  }
+]

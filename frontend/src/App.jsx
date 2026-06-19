@@ -9,10 +9,20 @@ const SCAN_URL = `${API_BASE_URL}/api/run-scan`;
 const SCAN_STATUS_URL = `${API_BASE_URL}/api/scan-status`;
 const LLM_PROVIDER_URL = `${API_BASE_URL}/api/llm-provider`;
 const PROVIDER_LABELS = { vllm: 'Local vLLM', ollama: 'Local Ollama', groq: 'Groq Cloud' };
+const PAYMENT_TYPE_OPTIONS = [
+  { value: 'THIRD_PARTY_PAYMENTS', label: 'TPP' },
+  { value: 'GEM_BILLS', label: 'GEM' },
+  { value: 'UNIT_PAYMENTS', label: 'UP' },
+];
+const PAYMENT_TYPE_LABELS = PAYMENT_TYPE_OPTIONS.reduce((labels, option) => {
+  labels[option.value] = option.label;
+  return labels;
+}, {});
 const POLL_INTERVAL_MS = 4000;
 const MAX_FEEDBACK_LENGTH = 100;
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 const SEARCH_DEBOUNCE_MS = 350;
+const PDF_EXPORT_LIMIT = 200;
 
 function normalizeAlerts(payload) {
   if (!Array.isArray(payload)) {
@@ -106,7 +116,7 @@ function getSeverity(score) {
 }
 
 const SORTABLE_HEADERS = [
-  { key: 'transaction_id', label: 'Transaction', sortable: true },
+  { key: 'transaction_id', label: 'Payment', sortable: true },
   { key: 'table_name', label: 'Table', sortable: true },
   { key: 'severity', label: 'Severity', sortable: false },
   { key: 'anomaly_score', label: 'Score', sortable: true },
@@ -135,6 +145,15 @@ function csvToPositiveIntegers(value) {
   return numbers;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export default function App() {
   const [alerts, setAlerts] = useState([]);
   const [total, setTotal] = useState(0);
@@ -149,6 +168,10 @@ export default function App() {
   const [paymentDrafts, setPaymentDrafts] = useState({});
   const [paymentMessage, setPaymentMessage] = useState('');
   const [paymentSaving, setPaymentSaving] = useState('');
+  const [selectedPaymentType, setSelectedPaymentType] = useState('THIRD_PARTY_PAYMENTS');
+  const [scanStartDate, setScanStartDate] = useState('');
+  const [scanEndDate, setScanEndDate] = useState('');
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [openCards, setOpenCards] = useState(() => new Set());
   const [llmProvider, setLlmProvider] = useState({ provider: 'vllm', available: ['vllm', 'ollama', 'groq'], model: '' });
   const [providerSaving, setProviderSaving] = useState(false);
@@ -167,12 +190,12 @@ export default function App() {
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
-  const buildAnomaliesUrl = () => {
+  const buildAnomaliesUrl = (overrides = {}) => {
     const url = new URL(API_URL);
-    url.searchParams.set('limit', String(pageSize));
-    url.searchParams.set('offset', String(page * pageSize));
-    url.searchParams.set('sort', sort);
-    url.searchParams.set('direction', direction);
+    url.searchParams.set('limit', String(overrides.limit ?? pageSize));
+    url.searchParams.set('offset', String(overrides.offset ?? page * pageSize));
+    url.searchParams.set('sort', overrides.sort ?? sort);
+    url.searchParams.set('direction', overrides.direction ?? direction);
     if (tableFilter) {
       url.searchParams.set('table', tableFilter);
     }
@@ -350,14 +373,106 @@ export default function App() {
   };
 
   const runScan = async () => {
-    setScanMessage('Starting scan...');
+    const paymentLabel = PAYMENT_TYPE_LABELS[selectedPaymentType] ?? selectedPaymentType;
+    setScanMessage(`Starting ${paymentLabel} scan...`);
     try {
-      const response = await fetch(SCAN_URL, { method: 'POST' });
+      const body = { payment_category: selectedPaymentType };
+      if (scanStartDate || scanEndDate) {
+        body.start_date = scanStartDate;
+        body.end_date = scanEndDate;
+      }
+      const response = await fetch(SCAN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
       const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || `Scan failed with ${response.status}`);
+      }
       setScanStatus(payload.status);
-      setScanMessage(payload.started ? 'Scan started' : 'A scan is already running');
-    } catch {
-      setScanMessage('Unable to start scan');
+      setScanMessage(payload.started ? `${paymentLabel} scan started` : 'A scan is already running');
+    } catch (error) {
+      setScanMessage(error.message || 'Unable to start scan');
+    }
+  };
+
+  const exportAnomaliesPdf = async () => {
+    setIsExportingPdf(true);
+    try {
+      const response = await fetch(buildAnomaliesUrl({ limit: PDF_EXPORT_LIMIT, offset: 0 }));
+      if (!response.ok) {
+        throw new Error(`Export failed with ${response.status}`);
+      }
+      const payload = await response.json();
+      const exportAlerts = normalizeAlerts(payload.items);
+      const generatedAt = formatDate(new Date().toISOString());
+      const filterText = [
+        tableFilter ? `Table: ${tableFilter}` : 'Table: all',
+        debouncedSearch ? `Search: ${debouncedSearch}` : 'Search: none',
+        `Sort: ${sort} ${direction}`,
+        `Rows: ${exportAlerts.length} of ${Number(payload.total ?? 0)}`,
+      ].join(' | ');
+      const rows = exportAlerts
+        .map((alert, index) => {
+          const severity = getSeverity(alert.anomaly_score).label;
+          const topFeature = firstAvailable(
+            alert.feature_snapshot?.row_top_feature_contributions?.[0]?.feature,
+            alert.feature_snapshot?.failed_rule_features?.[0],
+            'Not available',
+          );
+          return `
+            <section class="anomaly">
+              <h2>${index + 1}. ${escapeHtml(alert.transaction_id)}</h2>
+              <dl>
+                <dt>Table</dt><dd>${escapeHtml(alert.table_name)}</dd>
+                <dt>Source record</dt><dd>${escapeHtml(alert.source_record_id)}</dd>
+                <dt>Severity</dt><dd>${escapeHtml(severity)}</dd>
+                <dt>Score</dt><dd>${escapeHtml(alert.anomaly_score.toFixed(2))}</dd>
+                <dt>Primary feature</dt><dd>${escapeHtml(topFeature)}</dd>
+                <dt>Detected</dt><dd>${escapeHtml(formatDate(alert.detected_at))}</dd>
+              </dl>
+              <p>${escapeHtml(alert.explanation)}</p>
+            </section>
+          `;
+        })
+        .join('');
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        throw new Error('Popup blocked. Allow popups to export PDF.');
+      }
+      printWindow.document.write(`
+        <!doctype html>
+        <html>
+          <head>
+            <title>Anomaly Report</title>
+            <style>
+              body { font-family: Arial, sans-serif; color: #111827; margin: 28px; }
+              h1 { font-size: 22px; margin: 0 0 6px; }
+              .meta { color: #4b5563; font-size: 12px; margin-bottom: 18px; }
+              .anomaly { break-inside: avoid; border-top: 1px solid #d1d5db; padding: 14px 0; }
+              h2 { font-size: 15px; margin: 0 0 8px; }
+              dl { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; margin: 0 0 10px; font-size: 12px; }
+              dt { font-weight: 700; color: #374151; }
+              dd { margin: 0; }
+              p { font-size: 12px; line-height: 1.45; margin: 0; white-space: pre-wrap; }
+              @page { margin: 16mm; }
+            </style>
+          </head>
+          <body>
+            <h1>Anomaly Report</h1>
+            <div class="meta">Generated ${escapeHtml(generatedAt)} | ${escapeHtml(filterText)}</div>
+            ${rows || '<p>No anomalies matched the current filters.</p>'}
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    } catch (error) {
+      setScanMessage(error.message || 'Unable to export PDF');
+    } finally {
+      setIsExportingPdf(false);
     }
   };
 
@@ -417,7 +532,7 @@ export default function App() {
     }
   };
 
-  // Debounce the transaction search box.
+  // Debounce the payment search box.
   useEffect(() => {
     const id = window.setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(id);
@@ -478,7 +593,7 @@ export default function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">Tulip 2.0 Risk Operations</p>
-            <h1>Anomaly Command Center</h1>
+            <h1>AI Based ANOMALY DETECTION</h1>
           </div>
 
           <div className="toolbar">
@@ -502,8 +617,40 @@ export default function App() {
                 ))}
               </select>
             </label>
+            <label className="providerToggle" title="Select payment type for the next scan">
+              <span>Payment</span>
+              <select
+                value={selectedPaymentType}
+                onChange={(event) => setSelectedPaymentType(event.target.value)}
+                disabled={scanStatus.running}
+              >
+                {PAYMENT_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="providerToggle dateToggle" title="Dak list_date start">
+              <span>From</span>
+              <input
+                type="date"
+                value={scanStartDate}
+                onChange={(event) => setScanStartDate(event.target.value)}
+                disabled={scanStatus.running}
+              />
+            </label>
+            <label className="providerToggle dateToggle" title="Dak list_date end">
+              <span>To</span>
+              <input
+                type="date"
+                value={scanEndDate}
+                onChange={(event) => setScanEndDate(event.target.value)}
+                disabled={scanStatus.running}
+              />
+            </label>
             <button className="secondaryButton" type="button" onClick={runScan} disabled={scanStatus.running}>
-              Run scan
+              Run {PAYMENT_TYPE_LABELS[selectedPaymentType] ?? ''} scan
             </button>
             <button className="secondaryButton" type="button" onClick={() => fetchAlerts({ showLoading: true })}>
               Refresh
@@ -547,12 +694,12 @@ export default function App() {
 
           <div className="filterBar" role="search">
             <label className="filterField">
-              <span>Transaction</span>
+              <span>Payment</span>
               <input
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search transaction id (e.g. bill:324)"
+                placeholder="Search payment id (e.g. GEM_BILLS:324)"
               />
             </label>
 
@@ -591,6 +738,14 @@ export default function App() {
                 Clear filters
               </button>
             )}
+            <button
+              className="secondaryButton"
+              type="button"
+              onClick={exportAnomaliesPdf}
+              disabled={isExportingPdf || total === 0}
+            >
+              {isExportingPdf ? 'Exporting...' : 'Export PDF'}
+            </button>
           </div>
 
           <div className="tableFrame">
@@ -767,7 +922,7 @@ export default function App() {
         <section className="featurePlanBand" aria-label="LLM feature plan">
           <div className="sectionHeader">
             <div>
-              <h2>LLM feature plan</h2>
+              <h2>AI Identified Anomaly detection</h2>
               <p>{featurePlan.length ? `${featurePlan.length} schema-validated table plan(s)` : 'No LLM feature plan loaded'}</p>
             </div>
           </div>

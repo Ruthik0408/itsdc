@@ -1,5 +1,6 @@
 import json
 import threading
+from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -10,6 +11,7 @@ from ml_engine import (
     DEFAULT_MAX_EXPLANATIONS,
     DEFAULT_MAX_TABLES_PER_SCAN,
     DEFAULT_ROWS_PER_TABLE,
+    MAX_ANOMALIES_PER_FEATURE,
     build_engine,
     build_llama_client,
     init_alert_tables,
@@ -44,6 +46,9 @@ scan_status = {
     "running": False,
     "last_result": None,
     "last_error": None,
+    "payment_category": None,
+    "dak_list_date_start": None,
+    "dak_list_date_end": None,
 }
 scan_lock = threading.Lock()
 
@@ -87,46 +92,85 @@ def fetch_anomaly_rows(
         params["query"] = f"%{query}%"
     where_clause = " AND ".join(filters)
 
+    capped_cte = f"""
+        WITH filtered AS (
+            SELECT
+                transaction_id,
+                COALESCE(table_name, 'unknown') AS table_name,
+                COALESCE(source_record_id, transaction_id) AS source_record_id,
+                anomaly_score,
+                COALESCE(isolation_score, anomaly_score) AS isolation_score,
+                autoencoder_score,
+                COALESCE(feature_snapshot, '{{}}'::jsonb) AS feature_snapshot,
+                explanation,
+                detected_at,
+                COALESCE(
+                    NULLIF(COALESCE(feature_snapshot, '{{}}'::jsonb)->'row_top_feature_contributions'->0->>'feature', ''),
+                    NULLIF(COALESCE(feature_snapshot, '{{}}'::jsonb)->'failed_rule_features'->>0, ''),
+                    transaction_id
+                ) AS primary_feature
+            FROM detected_anomalies
+            WHERE {where_clause}
+        ),
+        capped AS (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY primary_feature
+                    ORDER BY anomaly_score DESC, detected_at DESC, transaction_id ASC
+                ) AS feature_rank
+            FROM filtered
+        ),
+        visible AS (
+            SELECT *
+            FROM capped
+            WHERE feature_rank <= :max_per_feature
+        )
+    """
+    capped_params = {**params, "max_per_feature": MAX_ANOMALIES_PER_FEATURE}
+
     with engine.connect() as conn:
         total = conn.execute(
-            text(f"SELECT COUNT(*) FROM detected_anomalies WHERE {where_clause};"),
-            params,
+            text(f"{capped_cte} SELECT COUNT(*) FROM visible;"),
+            capped_params,
         ).scalar_one()
 
         tables = [
             row[0]
             for row in conn.execute(
                 text(
-                    """
+                    f"""
+                    {capped_cte}
                     SELECT DISTINCT table_name
-                    FROM detected_anomalies
-                    WHERE review_status IS NULL AND table_name IS NOT NULL
+                    FROM visible
+                    WHERE table_name IS NOT NULL
                     ORDER BY table_name;
                     """
-                )
+                ),
+                capped_params,
             ).all()
         ]
 
         rows = conn.execute(
             text(
                 f"""
+                {capped_cte}
                 SELECT
                     transaction_id,
-                    COALESCE(table_name, 'unknown') AS table_name,
-                    COALESCE(source_record_id, transaction_id) AS source_record_id,
+                    table_name,
+                    source_record_id,
                     anomaly_score,
-                    COALESCE(isolation_score, anomaly_score) AS isolation_score,
+                    isolation_score,
                     autoencoder_score,
-                    COALESCE(feature_snapshot, '{{}}'::jsonb) AS feature_snapshot,
+                    feature_snapshot,
                     explanation,
                     detected_at
-                FROM detected_anomalies
-                WHERE {where_clause}
+                FROM visible
                 ORDER BY {sort_column} {sort_direction}, transaction_id ASC
                 LIMIT :limit OFFSET :offset;
                 """
             ),
-            {**params, "limit": limit, "offset": offset},
+            {**capped_params, "limit": limit, "offset": offset},
         ).mappings()
 
         items = []
@@ -325,6 +369,9 @@ def make_api_handler(
     max_tables: int,
     rows_per_table: int,
     detection_stage: str,
+    default_payment_category: str | None = None,
+    default_start_date: str | None = None,
+    default_end_date: str | None = None,
 ):
     class ApiHandler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -454,11 +501,36 @@ def make_api_handler(
                 self.send_json(404, {"error": "Not found"})
                 return
 
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(content_length).decode("utf-8") if content_length else "{}"
+                payload = json.loads(raw_body) if raw_body.strip() else {}
+            except json.JSONDecodeError:
+                self.send_json(400, {"error": "Request body must be valid JSON"})
+                return
+
+            payment_category = str(payload.get("payment_category") or "").strip() or default_payment_category
+            start_date = str(payload.get("start_date") or "").strip() or default_start_date
+            end_date = str(payload.get("end_date") or "").strip() or default_end_date
+            if bool(start_date) != bool(end_date):
+                self.send_json(400, {"error": "Both start_date and end_date are required for dak.list_date filtering"})
+                return
+            try:
+                if start_date and end_date:
+                    date.fromisoformat(start_date)
+                    date.fromisoformat(end_date)
+            except ValueError:
+                self.send_json(400, {"error": "start_date and end_date must use YYYY-MM-DD"})
+                return
+
             with scan_lock:
                 already_running = scan_status["running"]
                 if not already_running:
                     scan_status["running"] = True
                     scan_status["last_error"] = None
+                    scan_status["payment_category"] = payment_category
+                    scan_status["dak_list_date_start"] = start_date
+                    scan_status["dak_list_date_end"] = end_date
 
             if already_running:
                 with scan_lock:
@@ -478,6 +550,9 @@ def make_api_handler(
                         max_tables=max_tables,
                         rows_per_table=rows_per_table,
                         detection_stage=detection_stage,
+                        payment_category=payment_category,
+                        start_date=start_date,
+                        end_date=end_date,
                     )
                     with scan_lock:
                         scan_status["last_result"] = result
@@ -532,10 +607,23 @@ def create_api_server(
     max_tables: int,
     rows_per_table: int,
     detection_stage: str,
+    payment_category: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> ThreadingHTTPServer:
     return ThreadingHTTPServer(
         (host, port),
-        make_api_handler(engine, llama_client, max_explanations, max_tables, rows_per_table, detection_stage),
+        make_api_handler(
+            engine,
+            llama_client,
+            max_explanations,
+            max_tables,
+            rows_per_table,
+            detection_stage,
+            default_payment_category=payment_category,
+            default_start_date=start_date,
+            default_end_date=end_date,
+        ),
     )
 
 
@@ -546,6 +634,9 @@ def start_api_server(
     max_tables: int = DEFAULT_MAX_TABLES_PER_SCAN,
     rows_per_table: int = DEFAULT_ROWS_PER_TABLE,
     detection_stage: str = DEFAULT_DETECTION_STAGE,
+    payment_category: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> None:
     print("[startup] API server mode starting.", flush=True)
     print(f"[startup] API will listen at http://{host}:{port}", flush=True)
@@ -563,6 +654,9 @@ def start_api_server(
         max_tables=max_tables,
         rows_per_table=rows_per_table,
         detection_stage=detection_stage,
+        payment_category=payment_category,
+        start_date=start_date,
+        end_date=end_date,
     )
     print("[api] Endpoints ready:", flush=True)
     print(f"[api]   GET  http://{host}:{port}/api/health", flush=True)
