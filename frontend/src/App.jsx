@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
 const API_URL = `${API_BASE_URL}/api/anomalies`;
 const FEATURE_PLAN_URL = `${API_BASE_URL}/api/feature-plan`;
+const PAYMENT_CATEGORIES_URL = `${API_BASE_URL}/api/payment-categories`;
 const REVIEW_URL = `${API_BASE_URL}/api/anomaly-review`;
 const SCAN_URL = `${API_BASE_URL}/api/run-scan`;
 const SCAN_STATUS_URL = `${API_BASE_URL}/api/scan-status`;
@@ -43,6 +44,55 @@ function formatDate(value) {
   }).format(date);
 }
 
+function formatCurrency(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) {
+    return 'Not available';
+  }
+
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+function firstAvailable(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== '') ?? 'Not available';
+}
+
+function forensicDetails(alert) {
+  const snapshot = alert?.feature_snapshot ?? {};
+  const engineered = snapshot.engineered_feature_values ?? {};
+  const dakId = firstAvailable(
+    snapshot.display_dak_id,
+    snapshot.fk_dak,
+    snapshot.dak_id,
+    snapshot.source_db_table === 'dak' ? snapshot.transaction_id : null,
+    alert.source_record_id,
+  );
+  const billAmount = firstAvailable(
+    snapshot.display_bill_amount_claimed,
+    snapshot.amount_claimed,
+    engineered.amount_claimed,
+    snapshot.source_db_table === 'bill' ? snapshot.amount_in_rupees : null,
+  );
+  const sectionName = firstAvailable(
+    snapshot.display_section_name,
+    snapshot.section_name,
+    snapshot.bill_fk_section_section_section_name,
+    snapshot.dak_fk_section_section_section_name,
+    snapshot.display_section_id ? `Section ${snapshot.display_section_id}` : null,
+    snapshot.fk_section ? `Section ${snapshot.fk_section}` : null,
+  );
+
+  return {
+    dakId,
+    billAmount: billAmount === 'Not available' ? billAmount : formatCurrency(billAmount),
+    sectionName,
+  };
+}
+
 function getSeverity(score) {
   if (score >= 12) {
     return { label: 'Critical', className: 'severityCritical' };
@@ -65,6 +115,26 @@ const SORTABLE_HEADERS = [
   { key: 'detected_at', label: 'Detected', sortable: true },
 ];
 
+function listToCsv(value) {
+  return Array.isArray(value) ? value.join(', ') : '';
+}
+
+function csvToStrings(value) {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function csvToPositiveIntegers(value) {
+  const items = csvToStrings(value);
+  const numbers = items.map((item) => Number(item));
+  if (numbers.some((item) => !Number.isInteger(item) || item <= 0)) {
+    throw new Error('Section IDs must be positive integers');
+  }
+  return numbers;
+}
+
 export default function App() {
   const [alerts, setAlerts] = useState([]);
   const [total, setTotal] = useState(0);
@@ -75,6 +145,10 @@ export default function App() {
   const [scanStatus, setScanStatus] = useState({ running: false, last_result: null, last_error: null });
   const [scanMessage, setScanMessage] = useState('');
   const [featurePlan, setFeaturePlan] = useState([]);
+  const [paymentCategories, setPaymentCategories] = useState([]);
+  const [paymentDrafts, setPaymentDrafts] = useState({});
+  const [paymentMessage, setPaymentMessage] = useState('');
+  const [paymentSaving, setPaymentSaving] = useState('');
   const [openCards, setOpenCards] = useState(() => new Set());
   const [llmProvider, setLlmProvider] = useState({ provider: 'vllm', available: ['vllm', 'ollama', 'groq'], model: '' });
   const [providerSaving, setProviderSaving] = useState(false);
@@ -168,6 +242,33 @@ export default function App() {
     }
   };
 
+  const fetchPaymentCategories = async ({ signal } = {}) => {
+    try {
+      const response = await fetch(PAYMENT_CATEGORIES_URL, { signal });
+      if (!response.ok) {
+        throw new Error(`Payment categories returned ${response.status}`);
+      }
+      const payload = await response.json();
+      const categories = Array.isArray(payload) ? payload : [];
+      setPaymentCategories(categories);
+      setPaymentDrafts(
+        categories.reduce((drafts, category) => {
+          drafts[category.category_name] = {
+            source_tables: listToCsv(category.source_tables),
+            dak_section_ids: listToCsv(category.dak_section_ids),
+            enabled: Boolean(category.enabled),
+          };
+          return drafts;
+        }, {})
+      );
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setPaymentCategories([]);
+        setPaymentMessage('Payment categories unavailable');
+      }
+    }
+  };
+
   const fetchProvider = async ({ signal } = {}) => {
     try {
       const response = await fetch(LLM_PROVIDER_URL, { signal });
@@ -201,6 +302,50 @@ export default function App() {
       fetchProvider();
     } finally {
       setProviderSaving(false);
+    }
+  };
+
+  const updatePaymentDraft = (categoryName, field, value) => {
+    setPaymentDrafts((current) => ({
+      ...current,
+      [categoryName]: {
+        ...current[categoryName],
+        [field]: value,
+      },
+    }));
+  };
+
+  const savePaymentCategory = async (categoryName) => {
+    const draft = paymentDrafts[categoryName];
+    if (!draft || paymentSaving) {
+      return;
+    }
+
+    setPaymentSaving(categoryName);
+    setPaymentMessage('');
+    try {
+      const body = {
+        category_name: categoryName,
+        source_tables: csvToStrings(draft.source_tables),
+        dak_section_ids: csvToPositiveIntegers(draft.dak_section_ids),
+        enabled: Boolean(draft.enabled),
+      };
+      const response = await fetch(PAYMENT_CATEGORIES_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || `Save failed with ${response.status}`);
+      }
+      setPaymentMessage(`${categoryName} saved`);
+      fetchPaymentCategories();
+      fetchFeaturePlan();
+    } catch (error) {
+      setPaymentMessage(error.message || 'Unable to save payment category');
+    } finally {
+      setPaymentSaving('');
     }
   };
 
@@ -304,6 +449,7 @@ export default function App() {
   useEffect(() => {
     const controller = new AbortController();
     fetchFeaturePlan({ signal: controller.signal });
+    fetchPaymentCategories({ signal: controller.signal });
     fetchProvider({ signal: controller.signal });
     return () => controller.abort();
   }, []);
@@ -550,6 +696,74 @@ export default function App() {
           </div>
         </section>
 
+        <section className="paymentConfigBand" aria-label="Payment category configuration">
+          <div className="sectionHeader">
+            <div>
+              <h2>Payment categories</h2>
+              <p>{paymentMessage || `${paymentCategories.length} configured payment type(s)`}</p>
+            </div>
+          </div>
+
+          <div className="paymentConfigGrid">
+            {paymentCategories.map((category) => {
+              const draft = paymentDrafts[category.category_name] || {
+                source_tables: listToCsv(category.source_tables),
+                dak_section_ids: listToCsv(category.dak_section_ids),
+                enabled: Boolean(category.enabled),
+              };
+              const isSaving = paymentSaving === category.category_name;
+
+              return (
+                <article className="paymentConfigCard" key={category.category_name}>
+                  <div className="paymentConfigHeader">
+                    <strong>{category.category_name}</strong>
+                    <label className="switchField">
+                      <input
+                        type="checkbox"
+                        checked={draft.enabled}
+                        onChange={(event) => updatePaymentDraft(category.category_name, 'enabled', event.target.checked)}
+                      />
+                      <span>Enabled</span>
+                    </label>
+                  </div>
+
+                  <div className="paymentConfigFields">
+                    <label className="filterField">
+                      <span>Source tables</span>
+                      <input
+                        value={draft.source_tables}
+                        onChange={(event) => updatePaymentDraft(category.category_name, 'source_tables', event.target.value)}
+                      />
+                    </label>
+                    <label className="filterField">
+                      <span>Dak sections</span>
+                      <input
+                        value={draft.dak_section_ids}
+                        onChange={(event) => updatePaymentDraft(category.category_name, 'dak_section_ids', event.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  <button
+                    className="secondaryButton"
+                    type="button"
+                    onClick={() => savePaymentCategory(category.category_name)}
+                    disabled={Boolean(paymentSaving)}
+                  >
+                    {isSaving ? 'Saving' : 'Save'}
+                  </button>
+                </article>
+              );
+            })}
+
+            {paymentCategories.length === 0 && (
+              <div className="featurePlanEmpty">
+                Payment categories are not available.
+              </div>
+            )}
+          </div>
+        </section>
+
         <section className="featurePlanBand" aria-label="LLM feature plan">
           <div className="sectionHeader">
             <div>
@@ -560,20 +774,24 @@ export default function App() {
 
           <div className="featurePlanGrid">
             {featurePlan.map((source) => {
-              const isOpen = openCards.has(source.table);
+              const sourceName = source.scan_name || source.table;
+              const isOpen = openCards.has(sourceName);
               const featureCount = (source.feature_plan || []).length;
 
               return (
-                <article className={`featurePlanCard ${isOpen ? 'isOpen' : ''}`} key={source.table}>
+                <article className={`featurePlanCard ${isOpen ? 'isOpen' : ''}`} key={sourceName}>
                   <button
                     type="button"
                     className="featurePlanCardHeader"
                     aria-expanded={isOpen}
-                    onClick={() => toggleCard(source.table)}
+                    onClick={() => toggleCard(sourceName)}
                   >
                     <span className="featurePlanTitle">
-                      <span className="featurePlanTableName">{source.table}</span>
+                      <span className="featurePlanTableName">{sourceName}</span>
                       <span className="featurePlanCount">{featureCount} feature{featureCount === 1 ? '' : 's'}</span>
+                      {source.table && source.table !== sourceName ? (
+                        <span className="featurePlanCount">{source.table}</span>
+                      ) : null}
                     </span>
                     <span className="featurePlanAmount">{source.amount_column}</span>
                     <span className="featurePlanChevron" aria-hidden="true">▸</span>
@@ -583,7 +801,7 @@ export default function App() {
                     <div className="featurePlanCardBodyInner">
                       <ul>
                         {(source.feature_plan || []).map((feature) => (
-                          <li key={`${source.table}-${feature.name}`}>
+                          <li key={`${sourceName}-${feature.name}`}>
                             <strong>{feature.name}</strong>
                             <span>
                               {feature.op}
@@ -648,6 +866,17 @@ export default function App() {
                 <dd>{formatDate(selectedAlert.detected_at)}</dd>
               </div>
             </dl>
+
+            <div className="forensicDetails">
+              {Object.entries(forensicDetails(selectedAlert)).map(([key, value]) => (
+                <div className="forensicDetailLine" key={key}>
+                  <span>
+                    {key === 'dakId' ? 'DAK ID' : key === 'billAmount' ? 'Bill amount claimed' : 'Section name'}
+                  </span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
 
             <div className="explanationBox">
               <h3>Reasoning</h3>

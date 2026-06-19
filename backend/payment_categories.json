@@ -1,0 +1,22 @@
+{
+  "THIRD_PARTY_PAYMENTS": {
+    "source_tables": ["dak", "bill", "cheque_slip", "punching_medium", "schedule3", "ecs"],
+    "dak_section_ids": [142, 228, 265, 383]
+  },
+  "UNIT_PAYMENTS": {
+    "source_tables": ["cash_requisition"],
+    "dak_section_ids": [143, 227, 266, 384]
+  },
+  "GEM_BILLS": {
+    "source_tables": ["gem_bill"],
+    "dak_section_ids": [113, 127, 128, 129, 219, 348]
+  },
+  "CIV_TADA_LTC_TRANSPORT_BILLS": {
+    "source_tables": ["civ_tada_ltc_bill"],
+    "dak_section_ids": [294, 229, 171, 119, 101, 91, 77, 27]
+  },
+  "CIV_MEDICAL_BILLS": {
+    "source_tables": ["civ_medical_bill"],
+    "dak_section_ids": [293, 230, 170, 118, 102, 95, 78, 26]
+  }
+}

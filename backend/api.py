@@ -13,8 +13,10 @@ from ml_engine import (
     build_engine,
     build_llama_client,
     init_alert_tables,
+    load_payment_categories_from_db,
     load_runtime_sources,
     run_scan,
+    update_payment_category_config,
 )
 from supervision import append_negative_supervision, append_positive_supervision
 from db_config import (
@@ -163,9 +165,9 @@ def fetch_anomaly_rows(
     }
 
 
-def load_feature_plan() -> list[dict]:
+def load_feature_plan(engine) -> list[dict]:
     try:
-        runtime_sources = load_runtime_sources()
+        runtime_sources = load_runtime_sources(engine)
     except Exception as exc:
         print(f"[api] Could not load runtime feature plan: {type(exc).__name__}: {exc}", flush=True)
         return []
@@ -177,6 +179,8 @@ def load_feature_plan() -> list[dict]:
         feature_plan.append(
             {
                 "table": source.table,
+                "scan_name": source.scan_name,
+                "dak_section_filter": list(source.dak_section_ids),
                 "amount_column": source.amount_column,
                 "context_columns": list(source.context_columns),
                 "base_context_columns": list(source.base_context_columns or source.context_columns),
@@ -194,6 +198,19 @@ def load_feature_plan() -> list[dict]:
             }
         )
     return feature_plan
+
+
+def list_payment_categories(engine) -> list[dict]:
+    categories = load_payment_categories_from_db(engine, include_disabled=True)
+    return [
+        {
+            "category_name": category,
+            "source_tables": list(config["source_tables"]),
+            "dak_section_ids": list(config["dak_section_ids"]),
+            "enabled": bool(config["enabled"]),
+        }
+        for category, config in categories.items()
+    ]
 
 
 def review_anomaly(engine, transaction_id: str, decision: str, feedback: str) -> dict:
@@ -323,7 +340,7 @@ def make_api_handler(
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
                 self.send_header("Access-Control-Allow-Headers", "Content-Type")
                 self.end_headers()
                 self.wfile.write(body)
@@ -372,7 +389,10 @@ def make_api_handler(
                     self.send_json(200, payload)
                     return
                 if path == "/api/feature-plan":
-                    self.send_json(200, load_feature_plan())
+                    self.send_json(200, load_feature_plan(engine))
+                    return
+                if path == "/api/payment-categories":
+                    self.send_json(200, list_payment_categories(engine))
                     return
                 if path == "/api/llm-provider":
                     self.send_json(200, llm_provider_state())
@@ -474,6 +494,32 @@ def make_api_handler(
                 payload = dict(scan_status)
             self.send_json(202, {"started": True, "status": payload})
 
+        def do_PUT(self):
+            path = urlparse(self.path).path
+            if path != "/api/payment-categories":
+                self.send_json(404, {"error": "Not found"})
+                return
+
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(content_length).decode("utf-8") if content_length else "{}"
+                payload = json.loads(raw_body)
+                updated = update_payment_category_config(
+                    engine,
+                    category_name=str(payload.get("category_name", "")),
+                    source_tables=payload.get("source_tables"),
+                    dak_section_ids=payload.get("dak_section_ids"),
+                    enabled=bool(payload.get("enabled", True)),
+                )
+                self.send_json(200, updated)
+            except RuntimeError as exc:
+                self.send_json(400, {"error": str(exc)})
+            except json.JSONDecodeError:
+                self.send_json(400, {"error": "Request body must be valid JSON"})
+            except Exception as exc:
+                print(f"[api] PUT {path} failed: {type(exc).__name__}: {exc}", flush=True)
+                self.send_json(500, {"error": f"{type(exc).__name__}: {exc}"})
+
     return ApiHandler
 
 
@@ -523,6 +569,8 @@ def start_api_server(
     print(f"[api]   GET  http://{host}:{port}/api/anomalies", flush=True)
     print(f"[api]   GET  http://{host}:{port}/api/scan-status", flush=True)
     print(f"[api]   GET  http://{host}:{port}/api/feature-plan", flush=True)
+    print(f"[api]   GET  http://{host}:{port}/api/payment-categories", flush=True)
     print(f"[api]   POST http://{host}:{port}/api/anomaly-review", flush=True)
     print(f"[api]   POST http://{host}:{port}/api/run-scan", flush=True)
+    print(f"[api]   PUT  http://{host}:{port}/api/payment-categories", flush=True)
     server.serve_forever()

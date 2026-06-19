@@ -326,7 +326,8 @@ h3 {
 /* ---------- Content bands / cards ------------------------------------ */
 
 .contentBand,
-.featurePlanBand {
+.featurePlanBand,
+.paymentConfigBand {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
@@ -407,6 +408,69 @@ h3 {
 
 .filterBar .secondaryButton {
   height: 38px;
+}
+
+/* ---------- Payment category config ---------------------------------- */
+
+.paymentConfigGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 20px 22px;
+}
+
+.paymentConfigCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.paymentConfigHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.paymentConfigHeader strong {
+  color: var(--text-strong);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.paymentConfigFields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.paymentConfigFields .filterField input {
+  width: 100%;
+  min-width: 0;
+}
+
+.switchField {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.switchField input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand);
+}
+
+.paymentConfigCard .secondaryButton {
+  align-self: flex-start;
 }
 
 /* ---------- Table ---------------------------------------------------- */
@@ -814,6 +878,38 @@ tbody tr:last-child td {
   font-variant-numeric: tabular-nums;
 }
 
+.forensicDetails {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-soft);
+}
+
+.forensicDetailLine {
+  display: grid;
+  grid-template-columns: minmax(130px, 180px) 1fr;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.forensicDetailLine span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.forensicDetailLine strong {
+  min-width: 0;
+  font-size: 15px;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+
 .explanationBox {
   margin-bottom: 18px;
 }
@@ -948,6 +1044,9 @@ tbody tr:last-child td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .featurePlanGrid {
+    grid-template-columns: 1fr;
+  }
+  .paymentConfigGrid {
     grid-template-columns: 1fr;
   }
   .detailGrid {

@@ -34,7 +34,15 @@ from supervision import (
     load_rejected_signatures,
     load_supervision_context_text,
 )
-from table_exclusions import get_allowed_source_tables, is_allowed_source_table, is_excluded_table
+from table_exclusions import (
+    get_allowed_physical_source_tables,
+    get_allowed_source_tables,
+    get_payment_category_source_tables,
+    is_allowed_source_table,
+    is_excluded_table,
+    load_payment_category_config,
+    validate_payment_category_entry,
+)
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -56,6 +64,21 @@ SAVE_COMMIT_BATCH_SIZE = int(os.getenv("SAVE_COMMIT_BATCH_SIZE", "25"))
 # Guarantee model (IsolationForest/autoencoder) anomalies a share of the
 # explanation budget so the high-volume workflow detector cannot starve them.
 MODEL_ANOMALY_RESERVE_FRACTION = float(os.getenv("MODEL_ANOMALY_RESERVE_FRACTION", "0.5"))
+MAX_CONFIG_CONTEXT_COLUMNS = int(os.getenv("MAX_CONFIG_CONTEXT_COLUMNS", "32"))
+FUNCTIONAL_RULE_OPERATIONS = {
+    "is_missing",
+    "missing_when_equals",
+    "missing_when_present",
+    "date_after",
+    "date_in_future",
+    "numeric_gt",
+    "numeric_lt",
+    "starts_with",
+    "equals",
+    "all_missing",
+    "duplicate_key",
+    "duplicate_distinct",
+}
 
 WORKFLOW_ENTRY_TABLES = (
     "bill",
@@ -89,6 +112,33 @@ WORKFLOW_DATE_COLUMNS = (
     "cmp_file_gen_date",
     "npb_date",
 )
+THIRD_PARTY_DAK_SECTION_IDS = (142, 228, 265, 383)
+
+EXTRA_SOURCE_JOIN_COLUMNS = {
+    "bill": (
+        {
+            "source_column": "fk_dak",
+            "reference_table": "dak",
+            "reference_pk": "id",
+            "reference_column": "bill_date",
+            "alias": "dak_bill_date",
+        },
+        {
+            "source_column": "fk_dak",
+            "reference_table": "dak",
+            "reference_pk": "id",
+            "reference_column": "fis_doc_no",
+            "alias": "dak_fis_doc_no",
+        },
+        {
+            "source_column": "fk_dak",
+            "reference_table": "dak",
+            "reference_pk": "id",
+            "reference_column": "reference_date",
+            "alias": "dak_reference_date",
+        },
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -127,6 +177,12 @@ class RuntimeSource:
     feature_plan: tuple[dict, ...] = ()
     base_context_columns: tuple[str, ...] = ()
     joined_context_columns: tuple[JoinedContext, ...] = ()
+    payment_category: str | None = None
+    dak_section_ids: tuple[int, ...] = ()
+
+    @property
+    def scan_name(self) -> str:
+        return self.payment_category or self.table
 
 
 def build_engine():
@@ -147,6 +203,183 @@ def build_llama_client():
         timeout=20,
         max_retries=0,
     )
+
+
+def _jsonb_value(value):
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
+
+
+def init_payment_category_table(conn) -> None:
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS payment_category_config (
+                category_name VARCHAR(100) PRIMARY KEY,
+                source_tables JSONB NOT NULL,
+                dak_section_ids JSONB NOT NULL,
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+            """
+        )
+    )
+    for ddl in (
+        "ALTER TABLE payment_category_config ADD COLUMN IF NOT EXISTS source_tables JSONB;",
+        "ALTER TABLE payment_category_config ADD COLUMN IF NOT EXISTS dak_section_ids JSONB;",
+        "ALTER TABLE payment_category_config ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;",
+        "ALTER TABLE payment_category_config ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();",
+    ):
+        conn.execute(text(ddl))
+
+    for category, config in load_payment_category_config().items():
+        conn.execute(
+            text(
+                """
+                INSERT INTO payment_category_config (
+                    category_name,
+                    source_tables,
+                    dak_section_ids,
+                    enabled,
+                    updated_at
+                )
+                VALUES (
+                    :category_name,
+                    CAST(:source_tables AS JSONB),
+                    CAST(:dak_section_ids AS JSONB),
+                    TRUE,
+                    NOW()
+                )
+                ON CONFLICT (category_name) DO NOTHING;
+                """
+            ),
+            {
+                "category_name": category,
+                "source_tables": json.dumps(list(config["source_tables"])),
+                "dak_section_ids": json.dumps(list(config["dak_section_ids"])),
+            },
+        )
+
+
+def load_payment_categories_from_db(engine, include_disabled: bool = False) -> dict[str, dict[str, tuple]]:
+    where_clause = "" if include_disabled else "WHERE enabled = TRUE"
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                f"""
+                SELECT category_name, source_tables, dak_section_ids, enabled
+                FROM payment_category_config
+                {where_clause}
+                ORDER BY category_name;
+                """
+            )
+        ).mappings()
+
+        categories: dict[str, dict[str, tuple]] = {}
+        for row in rows:
+            category = str(row["category_name"])
+            entry = validate_payment_category_entry(
+                category,
+                _jsonb_value(row["source_tables"]),
+                _jsonb_value(row["dak_section_ids"]),
+            )
+            entry["enabled"] = bool(row["enabled"])
+            categories[category] = entry
+        return categories
+
+
+def load_active_payment_category_config(engine=None) -> dict[str, dict[str, tuple]]:
+    if engine is None:
+        return load_payment_category_config()
+    categories = load_payment_categories_from_db(engine, include_disabled=True)
+    return categories or load_payment_category_config()
+
+
+def payment_category_source_tables_from_config(
+    payment_categories: dict[str, dict[str, tuple]]
+) -> dict[str, tuple[str, ...]]:
+    return {
+        category: config["source_tables"]
+        for category, config in payment_categories.items()
+        if config.get("enabled", True)
+    }
+
+
+def payment_category_dak_sections_from_config(
+    payment_categories: dict[str, dict[str, tuple]]
+) -> dict[str, tuple[int, ...]]:
+    return {
+        category: config["dak_section_ids"]
+        for category, config in payment_categories.items()
+        if config.get("enabled", True)
+    }
+
+
+def resolve_allowed_physical_source_tables(
+    payment_category_source_tables: dict[str, tuple[str, ...]] | None = None,
+) -> tuple[str, ...]:
+    payment_category_source_tables = payment_category_source_tables or get_payment_category_source_tables()
+    tables = []
+    seen = set()
+    for table in get_allowed_source_tables():
+        physical_tables = payment_category_source_tables.get(table, (table,))
+        for physical_table in physical_tables:
+            if physical_table in seen or is_excluded_table(physical_table):
+                continue
+            tables.append(physical_table)
+            seen.add(physical_table)
+    return tuple(tables)
+
+
+def update_payment_category_config(
+    engine,
+    category_name: str,
+    source_tables,
+    dak_section_ids,
+    enabled: bool = True,
+) -> dict:
+    category_name = str(category_name).strip()
+    entry = validate_payment_category_entry(category_name, source_tables, dak_section_ids)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO payment_category_config (
+                    category_name,
+                    source_tables,
+                    dak_section_ids,
+                    enabled,
+                    updated_at
+                )
+                VALUES (
+                    :category_name,
+                    CAST(:source_tables AS JSONB),
+                    CAST(:dak_section_ids AS JSONB),
+                    :enabled,
+                    NOW()
+                )
+                ON CONFLICT (category_name)
+                DO UPDATE SET
+                    source_tables = EXCLUDED.source_tables,
+                    dak_section_ids = EXCLUDED.dak_section_ids,
+                    enabled = EXCLUDED.enabled,
+                    updated_at = NOW();
+                """
+            ),
+            {
+                "category_name": category_name,
+                "source_tables": json.dumps(list(entry["source_tables"])),
+                "dak_section_ids": json.dumps(list(entry["dak_section_ids"])),
+                "enabled": bool(enabled),
+            },
+        )
+    return {
+        "category_name": category_name,
+        "source_tables": list(entry["source_tables"]),
+        "dak_section_ids": list(entry["dak_section_ids"]),
+        "enabled": bool(enabled),
+    }
 
 
 def init_alert_tables(engine) -> None:
@@ -183,7 +416,8 @@ def init_alert_tables(engine) -> None:
             "ALTER TABLE detected_anomalies ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;",
         ):
             conn.execute(text(ddl))
-    print("[db] detected_anomalies table is ready.", flush=True)
+        init_payment_category_table(conn)
+    print("[db] detected_anomalies and payment_category_config tables are ready.", flush=True)
 
 
 def quote_identifier(identifier: str) -> str:
@@ -192,8 +426,9 @@ def quote_identifier(identifier: str) -> str:
 
 def prune_schema_to_allowed_relationships(
     tables: dict[str, list[ColumnInfo]],
+    root_tables: Iterable[str] | None = None,
 ) -> dict[str, list[ColumnInfo]]:
-    root_tables = set(get_allowed_source_tables())
+    root_tables = set(root_tables or get_allowed_source_tables())
     visible_tables = {
         table
         for table in root_tables
@@ -218,7 +453,10 @@ def prune_schema_to_allowed_relationships(
     }
 
 
-def parse_schema_file(path: str = SCHEMA_FILE) -> dict[str, list[ColumnInfo]]:
+def parse_schema_file(
+    path: str = SCHEMA_FILE,
+    root_tables: Iterable[str] | None = None,
+) -> dict[str, list[ColumnInfo]]:
     started_at = time.perf_counter()
     print(f"[schema] Reading schema from {path}.", flush=True)
     tables: dict[str, list[ColumnInfo]] = {}
@@ -262,7 +500,7 @@ def parse_schema_file(path: str = SCHEMA_FILE) -> dict[str, list[ColumnInfo]]:
             )
 
     raw_table_count = len(tables)
-    tables = prune_schema_to_allowed_relationships(tables)
+    tables = prune_schema_to_allowed_relationships(tables, root_tables=root_tables)
     column_count = sum(len(columns) for columns in tables.values())
     print(
         f"[schema] Parsed {len(tables)} allowed root/FK-linked tables "
@@ -367,9 +605,32 @@ def build_relationship_feature_plan(table: str, joined_context_columns: tuple[Jo
     return raw_plan
 
 
+def available_extra_join_columns(
+    schema: dict[str, list[ColumnInfo]],
+    table: str,
+    source_column_names: set[str],
+) -> tuple[dict, ...]:
+    available = []
+    for join_column in EXTRA_SOURCE_JOIN_COLUMNS.get(table, ()):
+        reference_table = str(join_column["reference_table"])
+        reference_columns = {column.name for column in schema.get(reference_table, [])}
+        if (
+            join_column["source_column"] in source_column_names
+            and join_column["reference_pk"] in reference_columns
+            and join_column["reference_column"] in reference_columns
+        ):
+            available.append(join_column)
+    return tuple(available)
+
+
+def extra_join_aliases(join_columns: Iterable[dict]) -> set[str]:
+    return {str(join_column["alias"]) for join_column in join_columns}
+
+
 def load_configured_runtime_sources(
     schema: dict[str, list[ColumnInfo]],
     path: str = SOURCE_CONFIG_FILE,
+    allowed_physical_tables: tuple[str, ...] | None = None,
 ) -> list[RuntimeSource]:
     if not os.path.exists(path):
         raise RuntimeError(
@@ -384,6 +645,7 @@ def load_configured_runtime_sources(
     if not isinstance(raw_sources, list):
         raise RuntimeError(f"{path} must contain a JSON array.")
 
+    allowed_physical_table_set = set(allowed_physical_tables or get_allowed_physical_source_tables())
     validated_sources = []
     for raw_source in raw_sources:
         if not isinstance(raw_source, dict):
@@ -393,9 +655,9 @@ def load_configured_runtime_sources(
         if is_excluded_table(table):
             print(f"[source] Rejected excluded table from config: {table}", flush=True)
             continue
-        if not is_allowed_source_table(table):
+        if table not in allowed_physical_table_set:
             print(
-                "[source] Rejected configured table outside LLAMA_BUSINESS_PRIORITY_TABLES: "
+                "[source] Rejected configured table outside LLAMA_BUSINESS_PRIORITY_TABLES/payment category selection: "
                 f"{table}",
                 flush=True,
             )
@@ -415,19 +677,34 @@ def load_configured_runtime_sources(
         if date_column and date_column not in column_names:
             continue
 
-        base_context_columns = tuple(
+        configured_context_columns = [
             column
             for column in raw_source.get("context_columns", [])
-            if isinstance(column, str) and column in column_names
-        )[:4]
+            if isinstance(column, str)
+        ]
+        available_extra_joins = available_extra_join_columns(schema, table, column_names)
+        extra_aliases = extra_join_aliases(available_extra_joins)
+        base_context_columns = tuple(
+            column
+            for column in configured_context_columns
+            if column in column_names
+        )[:MAX_CONFIG_CONTEXT_COLUMNS]
+        extra_context_columns = tuple(
+            column
+            for column in configured_context_columns
+            if column in extra_aliases
+        )
         joined_context_columns = build_joined_contexts(schema, table, base_context_columns)
-        context_columns = base_context_columns + tuple(joined.alias for joined in joined_context_columns)
+        context_columns = base_context_columns + extra_context_columns + tuple(
+            joined.alias for joined in joined_context_columns
+        )
         feature_plan = tuple(
             feature
             for feature in raw_source.get("feature_plan", [])
             if isinstance(feature, dict)
         )
-        feature_plan = feature_plan + tuple(build_relationship_feature_plan(table, joined_context_columns))
+        if not feature_plan:
+            feature_plan = feature_plan + tuple(build_relationship_feature_plan(table, joined_context_columns))
         feature_plan = tuple(
             validate_feature_plan(
                 feature_plan,
@@ -628,6 +905,7 @@ def build_candidate_feature_plan(table: str, context_columns: list[str], date_co
 def load_candidate_audit_runtime_sources(
     schema: dict[str, list[ColumnInfo]],
     path: str = SCHEMA_CANDIDATE_AUDIT_FILE,
+    allowed_physical_tables: tuple[str, ...] | None = None,
 ) -> list[RuntimeSource]:
     if not os.path.exists(path):
         return []
@@ -642,12 +920,13 @@ def load_candidate_audit_runtime_sources(
     if not isinstance(candidates, list):
         return []
 
+    allowed_physical_table_set = set(allowed_physical_tables or get_allowed_physical_source_tables())
     sources: list[RuntimeSource] = []
     for candidate in candidates:
         if not isinstance(candidate, dict):
             continue
         table = str(candidate.get("table", "")).strip()
-        if table not in schema or not is_allowed_source_table(table):
+        if table not in schema or table not in allowed_physical_table_set:
             continue
 
         id_candidates = candidate.get("primary_keys") or []
@@ -709,9 +988,12 @@ def load_candidate_audit_runtime_sources(
     return sources
 
 
-def load_schema_runtime_sources(schema: dict[str, list[ColumnInfo]]) -> list[RuntimeSource]:
+def load_schema_runtime_sources(
+    schema: dict[str, list[ColumnInfo]],
+    allowed_physical_tables: tuple[str, ...] | None = None,
+) -> list[RuntimeSource]:
     sources: list[RuntimeSource] = []
-    for table in get_allowed_source_tables():
+    for table in allowed_physical_tables or get_allowed_physical_source_tables():
         if table not in schema:
             print(f"[source] Required table missing from schema: {table}", flush=True)
             continue
@@ -762,6 +1044,80 @@ def load_schema_runtime_sources(schema: dict[str, list[ColumnInfo]]) -> list[Run
         flush=True,
     )
     return sources
+
+
+def _with_payment_filter(
+    source: RuntimeSource,
+    payment_category: str | None,
+    payment_category_dak_sections: dict[str, tuple[int, ...]],
+) -> RuntimeSource:
+    if not payment_category:
+        return source
+    return RuntimeSource(
+        table=source.table,
+        id_column=source.id_column,
+        amount_column=source.amount_column,
+        context_columns=source.context_columns,
+        date_column=source.date_column,
+        feature_plan=source.feature_plan,
+        base_context_columns=source.base_context_columns,
+        joined_context_columns=source.joined_context_columns,
+        payment_category=payment_category,
+        dak_section_ids=payment_category_dak_sections[payment_category],
+    )
+
+
+def apply_payment_category_filters(
+    sources: list[RuntimeSource],
+    payment_categories: dict[str, dict[str, tuple]] | None = None,
+) -> list[RuntimeSource]:
+    configured_items = get_allowed_source_tables()
+    payment_categories = payment_categories or load_payment_category_config()
+    all_payment_category_source_tables = {
+        category: config["source_tables"]
+        for category, config in payment_categories.items()
+    }
+    payment_category_source_tables = payment_category_source_tables_from_config(payment_categories)
+    payment_category_dak_sections = payment_category_dak_sections_from_config(payment_categories)
+    if any(item in all_payment_category_source_tables for item in configured_items):
+        filtered_sources: list[RuntimeSource] = []
+        source_by_table = {source.table: source for source in sources}
+        for item in configured_items:
+            if item in all_payment_category_source_tables:
+                if item not in payment_category_source_tables:
+                    continue
+                for table in payment_category_source_tables[item]:
+                    source = source_by_table.get(table)
+                    if source:
+                        filtered_sources.append(_with_payment_filter(source, item, payment_category_dak_sections))
+                continue
+
+            for table in (item,):
+                source = source_by_table.get(table)
+                if source:
+                    filtered_sources.append(source)
+        return filtered_sources
+
+    default_table_payment_category = {
+        table: category
+        for category, tables in payment_category_source_tables.items()
+        for table in tables
+    }
+    disabled_table_categories = {
+        table: category
+        for category, tables in all_payment_category_source_tables.items()
+        if category not in payment_category_source_tables
+        for table in tables
+    }
+    return [
+        _with_payment_filter(
+            source,
+            default_table_payment_category.get(source.table),
+            payment_category_dak_sections,
+        )
+        for source in sources
+        if source.table not in disabled_table_categories
+    ]
 
 
 def table_exists(engine, table: str) -> bool:
@@ -946,6 +1302,38 @@ def workflow_anomaly_context(
     return context
 
 
+def _row_value(row, key: str):
+    if isinstance(row, pd.Series):
+        return row.get(key)
+    return getattr(row, key, None)
+
+
+def add_display_context(context: dict, row=None, source: RuntimeSource | None = None) -> dict:
+    if row is not None:
+        if source and source.table == "dak":
+            context.setdefault("display_dak_id", context.get("source_record_id") or _row_value(row, "transaction_id"))
+        else:
+            context.setdefault("display_dak_id", _row_value(row, "fk_dak"))
+
+        bill_amount = _row_value(row, "amount_claimed")
+        if bill_amount is None and source and source.table == "bill":
+            bill_amount = _row_value(row, "amount")
+        if bill_amount is not None and not pd.isna(bill_amount):
+            context.setdefault("display_bill_amount_claimed", json_safe_value(bill_amount))
+
+        for key in ("section_name", "bill_fk_section_section_section_name", "dak_fk_section_section_section_name"):
+            value = _row_value(row, key)
+            if value is not None and not pd.isna(value):
+                context.setdefault("display_section_name", json_safe_value(value))
+                break
+
+        section_id = _row_value(row, "fk_section")
+        if section_id is not None and not pd.isna(section_id):
+            context.setdefault("display_section_id", json_safe_value(section_id))
+
+    return context
+
+
 def make_workflow_anomaly(
     anomaly_type: str,
     dak_id,
@@ -983,6 +1371,7 @@ def detect_workflow_anomalies(engine, row_limit: int = DEFAULT_ROWS_PER_TABLE) -
         return []
 
     workflow_union_sql = build_workflow_union_sql(usable_tables, columns_by_table, row_limit)
+    dak_section_filter_sql = ", ".join(str(section_id) for section_id in THIRD_PARTY_DAK_SECTION_IDS)
     query = f"""
         WITH workflow_rows AS (
             {workflow_union_sql}
@@ -1001,13 +1390,18 @@ def detect_workflow_anomalies(engine, row_limit: int = DEFAULT_ROWS_PER_TABLE) -
             FROM workflow_rows
             GROUP BY dak_id
         )
-        SELECT *
+        SELECT stage_counts.*
         FROM stage_counts
-        WHERE entry_table_count > 1
-           OR (cheque_slip_count > 0 AND entry_count = 0)
-           OR (punching_medium_count > 0 AND cheque_slip_count = 0)
-           OR (schedule3_count > 0 AND punching_medium_count = 0)
-           OR (ecs_count > 0 AND schedule3_count = 0)
+        INNER JOIN dak AS workflow_dak
+            ON stage_counts.dak_id = workflow_dak.id::text
+        WHERE workflow_dak.fk_section IN ({dak_section_filter_sql})
+          AND (
+              entry_table_count > 1
+              OR (cheque_slip_count > 0 AND entry_count = 0)
+              OR (punching_medium_count > 0 AND cheque_slip_count = 0)
+              OR (schedule3_count > 0 AND punching_medium_count = 0)
+              OR (ecs_count > 0 AND schedule3_count = 0)
+          )
         ORDER BY latest_event_date DESC NULLS LAST, dak_id DESC
         LIMIT :row_limit;
     """
@@ -1069,13 +1463,49 @@ def build_source_query(source: RuntimeSource) -> str:
 
     for column in base_context_columns:
         selected_columns.append(f"src.{quote_identifier(column)} AS {quote_identifier(column)}")
-        where_columns.append(column)
 
     if source.date_column:
         selected_columns.append(f"src.{quote_identifier(source.date_column)} AS event_date")
 
     join_clauses = []
     join_aliases = {}
+    dak_filter_alias = None
+    extra_join_alias_by_key = {}
+    if source.dak_section_ids:
+        if source.table == "dak":
+            dak_filter_alias = "src"
+        else:
+            dak_filter_alias = "dak_filter"
+            extra_join_alias_by_key[("fk_dak", "dak", "id")] = dak_filter_alias
+            join_clauses.append(
+                "INNER JOIN dak AS dak_filter "
+                f"ON src.{quote_identifier('fk_dak')} = dak_filter.{quote_identifier('id')}"
+            )
+
+    selected_extra_aliases = set(source.context_columns).difference(base_context_columns)
+    for extra_join in EXTRA_SOURCE_JOIN_COLUMNS.get(source.table, ()):
+        alias = str(extra_join["alias"])
+        if alias not in selected_extra_aliases:
+            continue
+        join_key = (
+            str(extra_join["source_column"]),
+            str(extra_join["reference_table"]),
+            str(extra_join["reference_pk"]),
+        )
+        if join_key not in extra_join_alias_by_key:
+            join_alias = f"rule_j{len(extra_join_alias_by_key)}"
+            extra_join_alias_by_key[join_key] = join_alias
+            join_clauses.append(
+                "LEFT JOIN "
+                f"{quote_identifier(extra_join['reference_table'])} AS {join_alias} "
+                f"ON src.{quote_identifier(extra_join['source_column'])} = "
+                f"{join_alias}.{quote_identifier(extra_join['reference_pk'])}"
+            )
+        join_alias = extra_join_alias_by_key[join_key]
+        selected_columns.append(
+            f"{join_alias}.{quote_identifier(extra_join['reference_column'])} AS {quote_identifier(alias)}"
+        )
+
     for joined in source.joined_context_columns:
         join_key = (joined.source_column, joined.reference_table, joined.reference_pk)
         if join_key not in join_aliases:
@@ -1092,7 +1522,11 @@ def build_source_query(source: RuntimeSource) -> str:
             f"{join_alias}.{quote_identifier(joined.reference_column)} AS {quote_identifier(joined.alias)}"
         )
 
-    where_clause = " AND ".join(f"src.{quote_identifier(column)} IS NOT NULL" for column in where_columns)
+    where_parts = [f"src.{quote_identifier(column)} IS NOT NULL" for column in where_columns]
+    if dak_filter_alias:
+        section_ids = ", ".join(str(section_id) for section_id in source.dak_section_ids)
+        where_parts.append(f"{dak_filter_alias}.{quote_identifier('fk_section')} IN ({section_ids})")
+    where_clause = " AND ".join(where_parts)
     order_clause = (
         f"ORDER BY src.{quote_identifier(source.date_column)} DESC"
         if source.date_column
@@ -1109,31 +1543,35 @@ def build_source_query(source: RuntimeSource) -> str:
     """
 
 
-def load_runtime_sources() -> list[RuntimeSource]:
+def load_runtime_sources(engine=None) -> list[RuntimeSource]:
     allowed_tables = get_allowed_source_tables()
     if not allowed_tables:
         raise RuntimeError("LLAMA_BUSINESS_PRIORITY_TABLES did not provide any usable table names.")
+    payment_categories = load_active_payment_category_config(engine)
+    allowed_physical_tables = resolve_allowed_physical_source_tables(
+        payment_category_source_tables_from_config(payment_categories)
+    )
     print(
         "[source] Runtime table allow-list from LLAMA_BUSINESS_PRIORITY_TABLES: "
         f"{', '.join(allowed_tables)}",
         flush=True,
     )
-    schema = parse_schema_file()
-    sources = load_configured_runtime_sources(schema)
+    schema = parse_schema_file(root_tables=allowed_physical_tables)
+    sources = load_configured_runtime_sources(schema, allowed_physical_tables=allowed_physical_tables)
     if not sources:
-        sources = load_candidate_audit_runtime_sources(schema)
-    if len({source.table for source in sources}) < len(get_allowed_source_tables()):
-        schema_sources = load_schema_runtime_sources(schema)
+        sources = load_candidate_audit_runtime_sources(schema, allowed_physical_tables=allowed_physical_tables)
+    if len({source.table for source in sources}) < len(allowed_physical_tables):
+        schema_sources = load_schema_runtime_sources(schema, allowed_physical_tables=allowed_physical_tables)
         merged_sources = {source.table: source for source in sources}
         for source in schema_sources:
             merged_sources.setdefault(source.table, source)
-        sources = [merged_sources[table] for table in get_allowed_source_tables() if table in merged_sources]
+        sources = [merged_sources[table] for table in allowed_physical_tables if table in merged_sources]
     if not sources:
         raise RuntimeError(
             f"No valid anomaly source tables from LLAMA_BUSINESS_PRIORITY_TABLES found in {SOURCE_CONFIG_FILE}. "
             "Run `venv/bin/python backend/run_architecture.py architect` after setting the allow-list."
         )
-    return sources
+    return apply_payment_category_filters(sources, payment_categories)
 
 
 def load_recent_transactions(
@@ -1142,12 +1580,17 @@ def load_recent_transactions(
     row_limit: int = DEFAULT_ROWS_PER_TABLE,
 ) -> pd.DataFrame:
     query = build_source_query(source)
-    print(f"[query] Running source query against {source.table}. row_limit={row_limit}", flush=True)
+    filter_text = f", dak_sections={list(source.dak_section_ids)}" if source.dak_section_ids else ""
+    print(
+        f"[query] Running source query against {source.scan_name} "
+        f"(db_table={source.table}{filter_text}). row_limit={row_limit}",
+        flush=True,
+    )
     started_at = time.perf_counter()
     df = pd.read_sql(text(query), engine, params={"row_limit": row_limit})
     print(
         f"[query] Loaded {len(df)} row(s) and {len(df.columns)} column(s) "
-        f"from {source.table} in {time.perf_counter() - started_at:.2f}s.",
+        f"from {source.scan_name} in {time.perf_counter() - started_at:.2f}s.",
         flush=True,
     )
     return df
@@ -1362,7 +1805,7 @@ def build_statistical_reason(row: pd.Series, clean_df: pd.DataFrame, source: Run
     rank_pct = float((amounts <= amount).mean() * 100) if not amounts.empty else 0.0
 
     parts = [
-        f"This {source.table} record has {source.amount_column} of Rs {amount:,.2f}. "
+        f"This {source.scan_name} record has {source.amount_column} of Rs {amount:,.2f}. "
         f"It is higher than about {rank_pct:.1f}% of the latest {len(clean_df):,} checked records."
     ]
 
@@ -1405,15 +1848,39 @@ def format_context_value(value) -> str:
 
 
 def json_safe_value(value):
-    if pd.isna(value):
-        return None
     if isinstance(value, np.integer):
         return int(value)
     if isinstance(value, np.floating):
         return float(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
+    if pd.isna(value):
+        return None
     return value
+
+
+def json_safe_list(value) -> list:
+    if value is None:
+        return []
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if isinstance(value, (list, tuple, set)):
+        return [json_safe_value(item) for item in value]
+    if pd.isna(value):
+        return []
+    return [json_safe_value(value)]
+
+
+def json_safe_object(value):
+    if isinstance(value, dict):
+        return {str(key): json_safe_object(item) for key, item in value.items()}
+    if isinstance(value, np.ndarray):
+        return [json_safe_object(item) for item in value.tolist()]
+    if isinstance(value, (list, tuple, set)):
+        return [json_safe_object(item) for item in value]
+    return json_safe_value(value)
 
 
 def append_autoencoder_confirmation(
@@ -1428,6 +1895,112 @@ def append_autoencoder_confirmation(
     )
 
 
+def has_functional_rule_features(source: RuntimeSource) -> bool:
+    return any(feature.get("op") in FUNCTIONAL_RULE_OPERATIONS for feature in get_feature_plan(source))
+
+
+def functional_rule_features(source: RuntimeSource, raw_features: pd.DataFrame) -> list[dict]:
+    return [
+        feature
+        for feature in get_feature_plan(source)
+        if feature.get("op") in FUNCTIONAL_RULE_OPERATIONS and feature.get("name") in raw_features.columns
+    ]
+
+
+def build_functional_rule_reason(
+    source: RuntimeSource,
+    source_record_id: str,
+    triggered_features: list[dict],
+) -> str:
+    reasons = []
+    for feature in triggered_features:
+        reason = str(feature.get("reason") or feature.get("name") or "A fraud-rule check failed.").strip(" .")
+        if reason and reason not in reasons:
+            reasons.append(reason)
+
+    if not reasons:
+        return f"{source.scan_name} record {source_record_id} failed a configured fraud-rule check."
+
+    joined_reasons = "; ".join(reasons[:3])
+    extra = len(reasons) - 3
+    if extra > 0:
+        joined_reasons = f"{joined_reasons}; plus {extra} more rule check(s)"
+    return f"{source.scan_name} record {source_record_id} failed fraud-rule check(s): {joined_reasons}."
+
+
+def detect_functional_rule_anomalies(df: pd.DataFrame, source: RuntimeSource) -> list[Anomaly]:
+    started_at = time.perf_counter()
+    features, clean_df, feature_names, _scaler, raw_features = prepare_features(df, source)
+    if raw_features.empty or clean_df.empty:
+        print("[rules] Functional feature plan produced no usable rule columns.", flush=True)
+        return []
+
+    rule_features = functional_rule_features(source, raw_features)
+    rule_names = [feature["name"] for feature in rule_features]
+    if not rule_names:
+        print("[rules] No usable functional rule feature columns found.", flush=True)
+        return []
+
+    rule_values = raw_features[rule_names].fillna(0)
+    triggered_mask = rule_values.gt(0).any(axis=1)
+    triggered_indices = np.where(triggered_mask.to_numpy())[0]
+    anomalies: list[Anomaly] = []
+    for idx in triggered_indices:
+        row = clean_df.iloc[idx]
+        source_record_id = normalize_record_id(row["transaction_id"])
+        row_rule_values = rule_values.iloc[idx]
+        triggered_features = [
+            feature
+            for feature in rule_features
+            if float(row_rule_values.get(feature["name"], 0) or 0) > 0
+        ]
+        failed_rule_names = [feature["name"] for feature in triggered_features]
+        failed_rule_count = len(failed_rule_names)
+        rule_score = min(100.0, 55.0 + (failed_rule_count * 10.0))
+        engineered_feature_values = {
+            name: json_safe_value(value)
+            for name, value in raw_features.iloc[idx].to_dict().items()
+        }
+        rule_reason = build_functional_rule_reason(source, source_record_id, triggered_features)
+        context = {
+            "source_table": source.scan_name,
+            "source_db_table": source.table,
+            "dak_section_filter": list(source.dak_section_ids),
+            "source_amount_column": source.amount_column,
+            "transaction_id": source_record_id,
+            "amount_in_rupees": float(row["amount"]),
+            "engineered_features_used": feature_names,
+            "engineered_feature_values": engineered_feature_values,
+            "failed_rule_features": failed_rule_names,
+            "failed_rule_count": failed_rule_count,
+            "rule_reason": rule_reason,
+            "statistical_reason": rule_reason,
+            "detector_type": "functional_rule",
+            "isolation_score": rule_score,
+            "detection_stage": "functional_rule",
+        }
+        add_display_context(context, row=row, source=source)
+        for column in source.context_columns:
+            if column in row:
+                context[column] = json_safe_value(row[column])
+        anomalies.append(
+            Anomaly(
+                transaction_id=f"{source.scan_name}:{source_record_id}",
+                table_name=source.scan_name,
+                source_record_id=source_record_id,
+                score=rule_score,
+                context=context,
+            )
+        )
+
+    print(
+        f"[rules] Functional rules produced {len(anomalies)} candidate(s) "
+        f"from {len(rule_names)} rule feature(s) in {time.perf_counter() - started_at:.2f}s.",
+        flush=True,
+    )
+    return anomalies
+
+
 def explain_autoencoder_rejection(
     source: RuntimeSource,
     source_record_id: str,
@@ -1436,7 +2009,7 @@ def explain_autoencoder_rejection(
     threshold: float,
 ) -> None:
     print(
-        f"[model] Autoencoder rejected {source.table}:{source_record_id} "
+        f"[model] Autoencoder rejected {source.scan_name}:{source_record_id} "
         f"score={autoencoder_score:.2f}, error={reconstruction_error:.6f}, "
         f"threshold={threshold:.6f}.",
         flush=True,
@@ -1459,12 +2032,20 @@ def detect_anomalies(
 ) -> list[Anomaly]:
     started_at = time.perf_counter()
     print(
-        f"[model] Starting anomaly detection for {source.table}.{source.amount_column}.",
+        f"[model] Starting anomaly detection for {source.scan_name}.{source.amount_column}.",
         flush=True,
     )
     if df.empty:
         print("[model] No rows to score.", flush=True)
         return []
+
+    if has_functional_rule_features(source):
+        print(
+            f"[rules] Using functional fraud-rule detection for {source.scan_name}; "
+            "skipping IsolationForest amount-distribution scoring.",
+            flush=True,
+        )
+        return detect_functional_rule_anomalies(df, source)
 
     features, clean_df, feature_names, scaler, raw_features = prepare_features(df, source)
     if len(features) < 20:
@@ -1505,11 +2086,11 @@ def detect_anomalies(
     # Supervision focus: rows resembling reviewer-accepted anomalies get a score
     # boost, close near-misses are promoted, and rows resembling rejected
     # false positives are down-ranked or suppressed.
-    accepted_signatures = load_accepted_signatures(source.table)
+    accepted_signatures = load_accepted_signatures(source.scan_name)
     supervision_boost, supervision_proximity = compute_supervision_boost(
         features, feature_names, accepted_signatures, scaler
     )
-    rejected_signatures = load_rejected_signatures(source.table)
+    rejected_signatures = load_rejected_signatures(source.scan_name)
     supervision_penalty, rejection_proximity = compute_supervision_penalty(
         features, feature_names, rejected_signatures, scaler
     )
@@ -1523,14 +2104,14 @@ def detect_anomalies(
     promoted_count = int(np.count_nonzero(promote_mask & ~base_anomaly_mask))
     if accepted_signatures:
         print(
-            f"[supervision] {source.table}: {len(accepted_signatures)} accepted signature(s); "
+            f"[supervision] {source.scan_name}: {len(accepted_signatures)} accepted signature(s); "
             f"promoted {promoted_count} near-match row(s) beyond IsolationForest.",
             flush=True,
         )
     if rejected_signatures:
         suppressed_count = int(np.count_nonzero((base_anomaly_mask | promote_mask) & suppress_mask))
         print(
-            f"[supervision] {source.table}: {len(rejected_signatures)} rejected signature(s); "
+            f"[supervision] {source.scan_name}: {len(rejected_signatures)} rejected signature(s); "
             f"suppressed {suppressed_count} false-positive match(es).",
             flush=True,
         )
@@ -1573,7 +2154,9 @@ def detect_anomalies(
             for name, value in raw_features.iloc[idx].to_dict().items()
         }
         context = {
-            "source_table": source.table,
+            "source_table": source.scan_name,
+            "source_db_table": source.table,
+            "dak_section_filter": list(source.dak_section_ids),
             "source_amount_column": source.amount_column,
             "transaction_id": source_record_id,
             "amount_in_rupees": float(row["amount"]),
@@ -1613,8 +2196,8 @@ def detect_anomalies(
                 context[column] = json_safe_value(row[column])
         anomalies.append(
             Anomaly(
-                transaction_id=f"{source.table}:{source_record_id}",
-                table_name=source.table,
+                transaction_id=f"{source.scan_name}:{source_record_id}",
+                table_name=source.scan_name,
                 source_record_id=source_record_id,
                 score=anomaly_score,
                 context=context,
@@ -1637,10 +2220,22 @@ def generate_reasoning_via_llama(
     supervision_context: str = "",
 ) -> str:
     statistical_reason = row_data.get("statistical_reason")
-    if row_data.get("detector_type") == "workflow_process":
+    detector_type = row_data.get("detector_type")
+    if detector_type == "workflow_process":
         focus = (
             "Explain the missing step, wrong step, or duplicate step in the business flow. "
             "Do not talk about amount unless it is given."
+        )
+    elif detector_type == "functional_rule":
+        focus = (
+            "Explain only the failed fraud-rule checks in rule_reason. "
+            "Do not compare this row with normal records or typical amounts."
+        )
+    elif detector_type == "forensic_cross_bill":
+        focus = (
+            "Explain the linked bill/DAK pattern in forensic_reason. "
+            "Focus on repeated invoice, vendor, date, amount, or DAK relationships. "
+            "Do not compare this row with normal records or typical amounts."
         )
     else:
         focus = "Explain the amount, date, status, or group value that looks different from normal records."
@@ -1651,17 +2246,22 @@ def generate_reasoning_via_llama(
             "Do not copy it word for word:\n"
             f"{supervision_context}\n"
         )
+    similarity_instruction = (
+        ""
+        if detector_type in {"functional_rule", "forensic_cross_bill"}
+        else 'If it matches a pattern the user accepted before, say: "This is similar to a case the user accepted before."'
+    )
     prompt = f"""
 This row was marked as unusual:
-{json.dumps(row_data, indent=2)}
+{json.dumps(json_safe_object(row_data), indent=2)}
 {grounding}
 Write the explanation in very simple words.
 Use 2 short sentences maximum.
 Say exactly why this row looks unusual.
 {focus}
-Use the supplied statistical_reason as the facts. Do not invent anything.
+Use the supplied statistical_reason, rule_reason, or forensic_reason as the facts. Do not invent anything.
 Do not use technical words like algorithm, vector, model, percentile, reconstruction, threshold, anomaly, anomalous, or data profile.
-If it matches a pattern the user accepted before, say: "This is similar to a case the user accepted before."
+{similarity_instruction}
 """
     try:
         settings = get_llama_settings()
@@ -1737,12 +2337,13 @@ def select_balanced_anomalies(
 
 
 def _insert_anomaly_row(conn, anomaly: Anomaly, explanation: str) -> int:
+    safe_context = json_safe_object(anomaly.context)
     isolation_score = (
         None
-        if anomaly.context.get("detector_type") == "gem_repeat_purchase"
-        else anomaly.context.get("isolation_score", anomaly.score)
+        if safe_context.get("detector_type") == "gem_repeat_purchase"
+        else safe_context.get("isolation_score", anomaly.score)
     )
-    autoencoder_score = anomaly.context.get("autoencoder_score")
+    autoencoder_score = safe_context.get("autoencoder_score")
     result = conn.execute(
         text(
             """
@@ -1784,7 +2385,7 @@ def _insert_anomaly_row(conn, anomaly: Anomaly, explanation: str) -> int:
             "score": anomaly.score,
             "isolation_score": isolation_score,
             "autoencoder_score": autoencoder_score,
-            "feature_snapshot": json.dumps(anomaly.context),
+            "feature_snapshot": json.dumps(safe_context),
             "explanation": explanation,
         },
     )
@@ -1897,7 +2498,7 @@ def run_scan(
 ) -> dict:
     started_at = time.perf_counter()
     print("[scan] Starting scan cycle.", flush=True)
-    sources = load_runtime_sources()
+    sources = load_runtime_sources(engine)
     all_anomalies = []
     scanned_tables = []
     skipped_tables = []
@@ -1909,27 +2510,30 @@ def run_scan(
 
         print(
             "[source] Candidate "
-            f"{candidate_index}/{len(sources)}: table={source.table}, "
+            f"{candidate_index}/{len(sources)}: table={source.scan_name}, "
+            f"db_table={source.table}, "
             f"id={source.id_column}, amount={source.amount_column}, "
             f"context={list(source.context_columns)}, "
             f"order={source.date_column or source.id_column}.",
             flush=True,
         )
         if not table_exists(engine, source.table):
-            skipped_tables.append({"table": source.table, "reason": "missing"})
+            skipped_tables.append({"table": source.scan_name, "db_table": source.table, "reason": "missing"})
             continue
 
         df = load_recent_transactions(engine, source, row_limit=rows_per_table)
         if df.empty:
-            skipped_tables.append({"table": source.table, "reason": "empty"})
+            skipped_tables.append({"table": source.scan_name, "db_table": source.table, "reason": "empty"})
             continue
 
-        print(f"Using schema-verified anomaly source: {source.table}.{source.amount_column}", flush=True)
+        print(f"Using schema-verified anomaly source: {source.scan_name}.{source.amount_column}", flush=True)
         anomalies = detect_anomalies(df, source, detection_stage=detection_stage)
         all_anomalies.extend(anomalies)
         scanned_tables.append(
             {
-                "table": source.table,
+                "table": source.scan_name,
+                "db_table": source.table,
+                "dak_section_filter": list(source.dak_section_ids),
                 "amount_column": source.amount_column,
                 "rows_loaded": len(df),
                 "anomaly_candidates": len(anomalies),
@@ -1983,7 +2587,7 @@ def run_scan(
         "detection_stage": detection_stage,
         "duration_seconds": round(duration, 2),
     }
-    print(f"[scan] Finished scan cycle: {json.dumps(result)}", flush=True)
+    print(f"[scan] Finished scan cycle: {json.dumps(json_safe_object(result))}", flush=True)
     return result
 
 

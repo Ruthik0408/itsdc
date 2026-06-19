@@ -3,6 +3,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+from functools import lru_cache
 from pathlib import Path
 
 import psycopg2
@@ -11,7 +12,7 @@ from openai import OpenAI
 
 from db_config import get_database_settings, get_llama_settings
 from feature_dsl import get_feature_contract, validate_feature_plan
-from table_exclusions import EXCLUDED_TABLES, get_allowed_source_tables, is_allowed_source_table, is_excluded_table
+from table_exclusions import DEFAULT_BUSINESS_PRIORITY_TABLES, EXCLUDED_TABLES, is_excluded_table
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -21,20 +22,28 @@ OUTPUT_FILE = str(BACKEND_DIR / "anomaly_guide.md")
 SOURCE_CONFIG_FILE = str(BACKEND_DIR / "anomaly_sources.json")
 LAST_BAD_RESPONSE_FILE = BACKEND_DIR / "last_llama_architect_response.txt"
 SCHEMA_CANDIDATE_AUDIT_FILE = BACKEND_DIR / "llama_schema_candidates.json"
-ARCHITECT_VERSION = "2026-06-17-business-priority-tables-v8"
+ARCHITECT_VERSION = "2026-06-18-validation-context-v9"
+DEFAULT_THIRD_PARTY_ARCHITECT_TABLES = (
+    *DEFAULT_BUSINESS_PRIORITY_TABLES,
+)
+DEFAULT_VALIDATION_CONTEXT_FILES = (
+    Path("/home/ruthikreddy/Documents/validation_files/THIRD_PARTY_PAYMENTS_VALIDATION.md"),
+)
 BUSINESS_WORKFLOW_CONTEXT = {
     "normal_flow": (
-        "dak -> exactly one first-stage bill table "
-        "(bill, gem_bill, cash_requisition, civ_medical_bill, civ_paybill, "
-        "civ_tada_ltc_bill, echs_medical_bill) -> cheque_slip -> "
-        "punching_medium -> schedule3 -> ecs"
+        "dak -> bill -> cheque_slip -> punching_medium -> schedule3 -> ecs"
     ),
     "business_rules": [
-        "A dak normally falls into one bill-type table first, not many.",
+        "Only THIRD_PARTY_PAYMENTS dak rows are in scope: dak.fk_section IN (142, 228, 265, 383).",
+        "A dak normally flows through bill, cheque_slip, punching_medium, schedule3, and ecs.",
         "Rejected records can stop in the middle and should not be forced into later stages.",
         "Verified or accepted records should continue to the next stage in the common flow.",
         "Later-stage rows without the expected earlier-stage row are suspicious.",
-        "Use id, fk_dak, fk_bill, fk_cheque_slip, fk_schedule3, fk_punching_medium, and related FK columns to understand movement between tables.",
+        "A valid-looking final payment with broken upstream trail is suspicious.",
+        "Approved/valid records that do not move forward can be suspicious.",
+        "Rejected/invalid records that move forward into payment stages are suspicious.",
+        "Multiple downstream records for one upstream record can indicate duplicate or split payment behavior.",
+        "Use id, fk_dak, fk_bill, fk_cheque_slip, fk_schedule3, fk_punching_medium, amount, date, status, approved, passed, rejected, invoice, reference, and payment columns to understand movement between tables.",
     ],
 }
 MAX_LLM_SCHEMA_TABLES = int(os.getenv("LLAMA_MAX_SCHEMA_TABLES", "40"))
@@ -45,8 +54,30 @@ MIN_AMOUNT_NON_NULL_RATIO = float(os.getenv("LLAMA_MIN_AMOUNT_NON_NULL_RATIO", "
 MIN_CONTEXT_NON_NULL_RATIO = float(os.getenv("LLAMA_MIN_CONTEXT_NON_NULL_RATIO", "0.20"))
 MAX_TABLE_SPARSE_COLUMN_FRACTION = float(os.getenv("LLAMA_MAX_TABLE_SPARSE_COLUMN_FRACTION", "0.40"))
 MAX_CONTEXT_FK_COLUMNS = int(os.getenv("LLAMA_MAX_CONTEXT_FK_COLUMNS", "6"))
+MAX_VALIDATION_RULES_PER_TABLE = int(os.getenv("LLAMA_MAX_VALIDATION_RULES_PER_TABLE", "60"))
+MAX_VALIDATION_RULES_PER_PROMPT = int(os.getenv("LLAMA_MAX_VALIDATION_RULES_PER_PROMPT", "100"))
 ALWAYS_INCLUDE_COLUMN_NAMES = ("approved", "record_status")
-BUSINESS_PRIORITY_TABLES = get_allowed_source_tables()
+def get_architect_source_tables() -> tuple[str, ...]:
+    configured = os.getenv("ARCHITECT_SOURCE_TABLES")
+    raw_tables = configured if configured is not None else ",".join(DEFAULT_THIRD_PARTY_ARCHITECT_TABLES)
+    tables = []
+    seen = set()
+    for table in raw_tables.split(","):
+        table = table.strip()
+        if not table or table in seen or is_excluded_table(table):
+            continue
+        tables.append(table)
+        seen.add(table)
+    return tuple(tables)
+
+
+BUSINESS_PRIORITY_TABLES = get_architect_source_tables()
+
+
+def is_architect_source_table(table_name: str) -> bool:
+    return table_name in set(BUSINESS_PRIORITY_TABLES)
+
+
 CONTEXT_COLUMN_PRIORITY_TERMS = (
     "vendor",
     "central_vendor",
@@ -103,6 +134,100 @@ LLAMA_MODEL = llama_settings["model"]
 
 def echo(message):
     print(f"[llama_architect] {message}")
+
+
+def configured_validation_context_paths() -> tuple[Path, ...]:
+    configured = os.getenv("ARCHITECT_VALIDATION_CONTEXT_FILES", "").strip()
+    if configured:
+        raw_paths = re.split(r"[,;]", configured)
+        return tuple(Path(path.strip()).expanduser() for path in raw_paths if path.strip())
+
+    paths = [path for path in DEFAULT_VALIDATION_CONTEXT_FILES if path.exists()]
+    context_dir = BACKEND_DIR / "validation_contexts"
+    if context_dir.exists():
+        paths.extend(sorted(context_dir.glob("*.md")))
+    return tuple(paths)
+
+
+def parse_validation_markdown(path: Path) -> list[dict]:
+    rules = []
+    table_row_pattern = re.compile(
+        r"^\|\s*(?P<table>[^|]+?)\s*\|\s*(?P<column>[^|]+?)\s*\|\s*(?P<validation>.+?)\s*\|$"
+    )
+
+    with open(path, "r", encoding="utf-8") as validation_file:
+        for raw_line in validation_file:
+            line = raw_line.strip()
+            if not line.startswith("|") or line.startswith("|---"):
+                continue
+            match = table_row_pattern.match(line)
+            if not match:
+                continue
+
+            table = match.group("table").strip()
+            column = match.group("column").strip()
+            validation = match.group("validation").strip()
+            if table == "table_name" or column == "column_name" or not validation:
+                continue
+            rules.append(
+                {
+                    "context_name": path.stem,
+                    "table": table,
+                    "column": column,
+                    "validation": validation,
+                }
+            )
+    return rules
+
+
+@lru_cache(maxsize=1)
+def load_validation_context_rules() -> tuple[dict, ...]:
+    rules = []
+    for path in configured_validation_context_paths():
+        if not path.exists():
+            echo(f"Validation context file not found, skipping: {path}")
+            continue
+        try:
+            parsed_rules = parse_validation_markdown(path)
+        except OSError as exc:
+            echo(f"Could not read validation context file {path}: {exc}")
+            continue
+        echo(f"Loaded {len(parsed_rules)} validation rule(s) from {path}")
+        rules.extend(parsed_rules)
+    return tuple(rules)
+
+
+def validation_rules_for_table(table_name: str) -> list[dict]:
+    return [
+        dict(rule)
+        for rule in load_validation_context_rules()
+        if rule["table"] == table_name
+    ][:MAX_VALIDATION_RULES_PER_TABLE]
+
+
+def validation_context_for_table_detail(table_detail: dict) -> list[dict]:
+    selected_rules = validation_rules_for_table(table_detail["table"])
+    seen = {(rule["table"], rule["column"], rule["validation"]) for rule in selected_rules}
+    for relationship in table_detail.get("relationship_context", []):
+        referenced_table = relationship.get("referenced_table")
+        if not referenced_table:
+            continue
+        for rule in validation_rules_for_table(referenced_table):
+            key = (rule["table"], rule["column"], rule["validation"])
+            if key in seen:
+                continue
+            selected_rules.append(rule)
+            seen.add(key)
+            if len(selected_rules) >= MAX_VALIDATION_RULES_PER_PROMPT:
+                return selected_rules
+    return selected_rules[:MAX_VALIDATION_RULES_PER_PROMPT]
+
+
+def validation_column_names_by_table() -> dict[str, set[str]]:
+    by_table: dict[str, set[str]] = {}
+    for rule in load_validation_context_rules():
+        by_table.setdefault(rule["table"], set()).add(rule["column"])
+    return by_table
 
 
 def ensure_llm_is_running():
@@ -191,34 +316,17 @@ def parse_schema_file(path):
 
     rows = prune_schema_rows_to_allowed_relationships(rows)
     tables = {row["table"] for row in rows}
-    echo(f"Parsed {len(tables)} allowed root/FK-linked tables and {len(rows)} columns from schema.")
+    echo(f"Parsed {len(tables)} architect table(s) and {len(rows)} columns from schema.")
     return rows
 
 
 def prune_schema_rows_to_allowed_relationships(schema_rows):
     root_tables = set(BUSINESS_PRIORITY_TABLES)
-    grouped = {}
-    for row in schema_rows:
-        grouped.setdefault(row["table"], []).append(row)
-
-    visible_tables = {
-        table
-        for table in root_tables
-        if table in grouped and not is_excluded_table(table)
-    }
-    for table in list(visible_tables):
-        for row in grouped.get(table, []):
-            referenced = row["references"]
-            if referenced != "None" and referenced in grouped and not is_excluded_table(referenced):
-                visible_tables.add(referenced)
-
-    for table, rows in grouped.items():
-        if table in visible_tables or is_excluded_table(table):
-            continue
-        if any(row["references"] in root_tables for row in rows):
-            visible_tables.add(table)
-
-    return [row for row in schema_rows if row["table"] in visible_tables]
+    return [
+        row
+        for row in schema_rows
+        if row["table"] in root_tables and not is_excluded_table(row["table"])
+    ]
 
 
 def group_schema(schema_rows):
@@ -298,7 +406,7 @@ def select_structural_profile_tables(schema_rows):
     scored_tables = []
 
     for table_name, columns in tables.items():
-        if is_excluded_table(table_name) or not is_allowed_source_table(table_name):
+        if is_excluded_table(table_name) or not is_architect_source_table(table_name):
             continue
         has_pk = any(column["key"] == "PK" for column in columns)
         if not has_pk:
@@ -391,10 +499,14 @@ def is_always_include_column(column):
     return column["column"].lower() in ALWAYS_INCLUDE_COLUMN_NAMES
 
 
-def column_priority(column):
+def column_priority(column, validation_columns_by_table=None):
+    validation_columns_by_table = validation_columns_by_table or {}
     column_non_null_ratio = non_null_ratio(column)
+    is_validation_column = column["column"] in validation_columns_by_table.get(column.get("table"), set())
     if is_always_include_column(column):
         base_score = 120
+    elif is_validation_column:
+        base_score = 115
     elif column["key"] == "PK":
         base_score = 100
     elif is_date_column(column):
@@ -422,8 +534,14 @@ def append_unique_columns(target, source):
             target.append(column)
 
 
-def trim_columns_for_llama(columns):
+def trim_columns_for_llama(columns, validation_columns_by_table=None):
+    validation_columns_by_table = validation_columns_by_table or {}
     usable_columns = filter_non_empty_columns(columns)
+    validation_columns = [
+        column
+        for column in usable_columns
+        if column["column"] in validation_columns_by_table.get(column.get("table"), set())
+    ]
     always_columns = [column for column in usable_columns if is_always_include_column(column)]
     pk_columns = [column for column in usable_columns if column["key"] == "PK"]
     numeric_columns = [
@@ -443,15 +561,34 @@ def trim_columns_for_llama(columns):
     ]
 
     ordered_columns = []
-    append_unique_columns(ordered_columns, sorted(always_columns, key=column_priority, reverse=True))
-    append_unique_columns(ordered_columns, sorted(pk_columns, key=column_priority, reverse=True))
-    append_unique_columns(ordered_columns, sorted(numeric_columns, key=column_priority, reverse=True))
-    append_unique_columns(ordered_columns, sorted(date_columns, key=column_priority, reverse=True))
     append_unique_columns(
         ordered_columns,
-        sorted(fk_columns, key=column_priority, reverse=True)[:MAX_CONTEXT_FK_COLUMNS],
+        sorted(validation_columns, key=lambda column: column_priority(column, validation_columns_by_table), reverse=True),
     )
-    append_unique_columns(ordered_columns, sorted(other_columns, key=column_priority, reverse=True))
+    append_unique_columns(
+        ordered_columns,
+        sorted(always_columns, key=lambda column: column_priority(column, validation_columns_by_table), reverse=True),
+    )
+    append_unique_columns(
+        ordered_columns,
+        sorted(pk_columns, key=lambda column: column_priority(column, validation_columns_by_table), reverse=True),
+    )
+    append_unique_columns(
+        ordered_columns,
+        sorted(numeric_columns, key=lambda column: column_priority(column, validation_columns_by_table), reverse=True),
+    )
+    append_unique_columns(
+        ordered_columns,
+        sorted(date_columns, key=lambda column: column_priority(column, validation_columns_by_table), reverse=True),
+    )
+    append_unique_columns(
+        ordered_columns,
+        sorted(fk_columns, key=lambda column: column_priority(column, validation_columns_by_table), reverse=True)[:MAX_CONTEXT_FK_COLUMNS],
+    )
+    append_unique_columns(
+        ordered_columns,
+        sorted(other_columns, key=lambda column: column_priority(column, validation_columns_by_table), reverse=True),
+    )
 
     return ordered_columns[:MAX_LLM_COLUMNS_PER_TABLE]
 
@@ -483,11 +620,24 @@ def write_schema_candidate_audit(candidates):
     echo(f"Wrote Python-selected LLM schema candidates to {SCHEMA_CANDIDATE_AUDIT_FILE}")
 
 
-def limited_compact_columns(columns, limit):
-    return [compact_column_for_llama(column) for column in sorted(columns, key=column_priority, reverse=True)[:limit]]
+def limited_compact_columns(columns, limit, validation_columns_by_table=None):
+    return [
+        compact_column_for_llama(column)
+        for column in sorted(
+            columns,
+            key=lambda column: column_priority(column, validation_columns_by_table),
+            reverse=True,
+        )[:limit]
+    ]
 
 
-def direct_relationship_context(table_name, columns, all_tables, max_relationships=8):
+def direct_relationship_context(
+    table_name,
+    columns,
+    all_tables,
+    max_relationships=8,
+    validation_columns_by_table=None,
+):
     relationships = []
     for column in columns:
         referenced_table = column.get("references")
@@ -499,7 +649,11 @@ def direct_relationship_context(table_name, columns, all_tables, max_relationshi
             {
                 "source_fk": column["column"],
                 "referenced_table": referenced_table,
-                "referenced_columns": limited_compact_columns(all_tables[referenced_table], 8),
+                "referenced_columns": limited_compact_columns(
+                    all_tables[referenced_table],
+                    8,
+                    validation_columns_by_table=validation_columns_by_table,
+                ),
             }
         )
         if len(relationships) >= max_relationships:
@@ -507,7 +661,13 @@ def direct_relationship_context(table_name, columns, all_tables, max_relationshi
     return relationships
 
 
-def build_table_summary_for_llama(table_name, profiled_columns, table_profile, score):
+def build_table_summary_for_llama(
+    table_name,
+    profiled_columns,
+    table_profile,
+    score,
+    validation_columns_by_table=None,
+):
     usable_columns = filter_non_empty_columns(profiled_columns)
     pk_columns = [column for column in usable_columns if column["key"] == "PK"]
     amount_columns = [column for column in usable_columns if is_amount_candidate_column(column)]
@@ -540,11 +700,11 @@ def build_table_summary_for_llama(table_name, profiled_columns, table_profile, s
         "usable_column_count": len(usable_columns),
         "sparse_column_fraction": round(sparse_column_fraction(profiled_columns), 4),
         "score": round(score, 4),
-        "primary_keys": limited_compact_columns(pk_columns, 3),
-        "amount_candidates": limited_compact_columns(amount_columns, 8),
-        "date_candidates": limited_compact_columns(date_columns, 8),
-        "context_candidates": limited_compact_columns(context_columns, 12),
-        "status_candidates": limited_compact_columns(status_columns, 8),
+        "primary_keys": limited_compact_columns(pk_columns, 3, validation_columns_by_table),
+        "amount_candidates": limited_compact_columns(amount_columns, 8, validation_columns_by_table),
+        "date_candidates": limited_compact_columns(date_columns, 8, validation_columns_by_table),
+        "context_candidates": limited_compact_columns(context_columns, 12, validation_columns_by_table),
+        "status_candidates": limited_compact_columns(status_columns, 8, validation_columns_by_table),
         "fk_relationships": [
             {
                 "source_fk": column["column"],
@@ -558,6 +718,7 @@ def build_table_summary_for_llama(table_name, profiled_columns, table_profile, s
 
 def build_llama_table_inventory(schema_rows):
     all_tables = group_schema(schema_rows)
+    validation_columns = validation_column_names_by_table()
     profile_candidates = select_structural_profile_tables(schema_rows)
     table_columns = {
         table_name: columns
@@ -615,13 +776,29 @@ def build_llama_table_inventory(schema_rows):
 
     for score, table_name, profiled_columns, table_profile in selected_tables:
         usable_columns = filter_non_empty_columns(profiled_columns)
-        summary = build_table_summary_for_llama(table_name, profiled_columns, table_profile, score)
+        summary = build_table_summary_for_llama(
+            table_name,
+            profiled_columns,
+            table_profile,
+            score,
+            validation_columns_by_table=validation_columns,
+        )
         summaries.append(summary)
         table_details[table_name] = {
             "table": table_name,
             "row_count": table_profile.get("row_count", 0),
-            "columns": sorted(usable_columns, key=column_priority, reverse=True),
-            "relationship_context": direct_relationship_context(table_name, usable_columns, all_tables),
+            "columns": sorted(
+                usable_columns,
+                key=lambda column: column_priority(column, validation_columns),
+                reverse=True,
+            ),
+            "relationship_context": direct_relationship_context(
+                table_name,
+                usable_columns,
+                all_tables,
+                validation_columns_by_table=validation_columns,
+            ),
+            "validation_context": validation_rules_for_table(table_name),
             "column_count": len(profiled_columns),
             "usable_column_count": len(usable_columns),
             "sparse_column_fraction": round(sparse_column_fraction(profiled_columns), 4),
@@ -630,7 +807,13 @@ def build_llama_table_inventory(schema_rows):
             {
                 **summary,
                 "business_priority": table_name in BUSINESS_PRIORITY_TABLES,
-                "relationship_context": direct_relationship_context(table_name, usable_columns, all_tables),
+                "relationship_context": direct_relationship_context(
+                    table_name,
+                    usable_columns,
+                    all_tables,
+                    validation_columns_by_table=validation_columns,
+                ),
+                "validation_context": validation_rules_for_table(table_name),
                 "full_usable_columns_for_stage_2": [
                     {
                         "column": column["column"],
@@ -640,7 +823,11 @@ def build_llama_table_inventory(schema_rows):
                         "non_null_count": column.get("non_null_count", 0),
                         "null_fraction": column.get("null_fraction", 1),
                     }
-                    for column in sorted(usable_columns, key=column_priority, reverse=True)
+                    for column in sorted(
+                        usable_columns,
+                        key=lambda column: column_priority(column, validation_columns),
+                        reverse=True,
+                    )
                 ],
                 "removed_sparse_columns": removed_sparse_columns(profiled_columns),
             }
@@ -679,10 +866,11 @@ def select_schema_candidates_for_llama(schema_rows):
 def compact_schema_subset_for_llama(schema_rows, table_names):
     requested_tables = set(table_names)
     tables = group_schema(schema_rows)
+    validation_columns = validation_column_names_by_table()
     table_columns = {
         table_name: columns
         for table_name, columns in tables.items()
-        if table_name in requested_tables and is_allowed_source_table(table_name)
+        if table_name in requested_tables and is_architect_source_table(table_name)
     }
     profiles = profile_columns_from_database(table_columns)
     schema = []
@@ -690,7 +878,10 @@ def compact_schema_subset_for_llama(schema_rows, table_names):
     for table_name, columns in sorted(table_columns.items()):
         table_profile = profiles.get(table_name, {"row_count": 0, "columns": {}})
         profiled_columns = apply_column_profiles(columns, table_profile)
-        trimmed_columns = trim_columns_for_llama(profiled_columns)
+        trimmed_columns = trim_columns_for_llama(
+            profiled_columns,
+            validation_columns_by_table=validation_columns,
+        )
         if not trimmed_columns:
             continue
         schema.append(
@@ -713,7 +904,7 @@ def extract_candidate_tables_from_payload(payload, schema_rows):
     for source in payload.get("sources", []):
         if isinstance(source, dict):
             table = str(source.get("table", "")).strip()
-            if table in known_tables and is_allowed_source_table(table) and not is_excluded_table(table) and table not in candidate_tables:
+            if table in known_tables and is_architect_source_table(table) and not is_excluded_table(table) and table not in candidate_tables:
                 candidate_tables.append(table)
 
     # Some local model responses return a planning-only shape like {"tables": [{"name": "..."}]}.
@@ -722,7 +913,7 @@ def extract_candidate_tables_from_payload(payload, schema_rows):
             table = str(source.get("name") or source.get("table") or "").strip()
         else:
             table = str(source).strip()
-        if table in known_tables and is_allowed_source_table(table) and not is_excluded_table(table) and table not in candidate_tables:
+        if table in known_tables and is_architect_source_table(table) and not is_excluded_table(table) and table not in candidate_tables:
             candidate_tables.append(table)
 
     return candidate_tables
@@ -813,39 +1004,152 @@ def create_llama_architecture_completion(prompt):
         )
 
 
-def ask_llama_to_plan_table(table_detail):
+FORENSIC_FEATURE_PRIORITIES = (
+    {
+        "signal": "broken_or_skipped_payment_flow",
+        "design_hint": (
+            "Prefer features that expose missing middle stages, downstream rows without upstream trail, "
+            "weak final ECS/payment trail, dak-to-bill multiplicity, bill-to-payment multiplicity, "
+            "and unusual movement across dak -> bill -> cheque_slip -> punching_medium -> schedule3 -> ecs."
+        ),
+    },
+    {
+        "signal": "status_approval_rejection_contradiction",
+        "design_hint": (
+            "Use record_status, approved, passed, cancelled, rejection/reason columns, payment-stage "
+            "presence, and dates to detect approved records stuck upstream or rejected/invalid records "
+            "moving forward into payment stages."
+        ),
+    },
+    {
+        "signal": "amount_and_payment_relationship_contradiction",
+        "design_hint": (
+            "Use claimed, passed, disallowed, recovery, cheque/payment, PM, schedule, ECS, and related "
+            "amount columns where visible to compare amount-to-amount and amount-to-payment consistency."
+        ),
+    },
+    {
+        "signal": "date_sequence_and_stage_timing",
+        "design_hint": (
+            "Use date_after, date_in_future, age_days, day_of_week, hour, and rolling-window features "
+            "to detect dates moving backwards in the payment chain, unusually fast movement, and delayed stages."
+        ),
+    },
+    {
+        "signal": "invoice_splitting_or_sanction_evasion",
+        "design_hint": (
+            "Use duplicate_normalized_key, rolling_window_count, rolling_window_amount_sum, "
+            "duplicate_key, duplicate_distinct, group_frequency, group_rank_pct, "
+            "ratio_to_group_median, and amount/date context to find the same vendor, "
+            "invoice/reference, DAK, unit, supply order, contract, or GST identity split "
+            "across multiple bills, nearby dates, or payment rows."
+        ),
+    },
+    {
+        "signal": "same_vendor_same_item_or_invoice_different_rate",
+        "design_hint": (
+            "Where item, invoice, vendor, bill type, supply order, contract, unit, GST, "
+            "or narration columns are visible, compare amount against vendor/context group "
+            "medians and use duplicate_distinct to flag same identity with different "
+            "amounts, dates, DAKs, units, or beneficiaries."
+        ),
+    },
+    {
+        "signal": "fake_or_manipulated_invoice_identity",
+        "design_hint": (
+            "Prioritize invoice_number, bill_no, reference_no, fis_doc_no, invoice_date, "
+            "bill_date, vendor, PAN/GSTIN-related FK context, duplicate invoice keys, "
+            "future dates, impossible date order, and suspicious FIS prefix handling."
+        ),
+    },
+    {
+        "signal": "tax_or_payment_detail_evasion_inside_allowed_tables",
+        "design_hint": (
+            "Use gst_applicable, tax recovery, payment narration/detail, invoice, reference, "
+            "vendor, beneficiary, and amount columns available inside the six allowed tables "
+            "to surface fake-invoice or tax/payment detail inconsistencies."
+        ),
+    },
+    {
+        "signal": "bill_or_payment_overpayment_and_identity_mismatch",
+        "design_hint": (
+            "Use bill amount, claimed/passed/CDA/unit paid, cheque, PM, schedule, ECS, "
+            "vendor/unit FK context, and grouped ratios to detect excess payment, duplicate "
+            "payment identities, and vendor/unit mismatches implied by validation_context."
+        ),
+    },
+    {
+        "signal": "payment_routing_or_beneficiary_diversion",
+        "design_hint": (
+            "Use beneficiary, vendor, bank/account, payment mode, cheque slip, ECS, "
+            "schedule, status, approval, and date columns to detect paid-to-party or "
+            "account routing patterns that differ from the bill/vendor context."
+        ),
+    },
+)
+
+
+def build_table_feature_prompt(table_detail):
     table_name = table_detail["table"]
     full_usable_columns = [compact_column_for_llama(column) for column in table_detail["columns"]]
-    echo(f"Asking the LLM to plan features for {table_name} using {len(full_usable_columns)} usable column(s).")
+    validation_context = validation_context_for_table_detail(table_detail)
 
-    prompt = {
+    return {
         "task": (
-            "Create one anomaly detection source plan for this required root table. "
-            "Python removed empty and mostly-null columns before this prompt. "
-            "Choose amount/date/context columns and engineered features from full_usable_columns. "
-            "Use relationship_context to understand direct FK joins that runtime can enrich automatically. "
-            "The user requires analysis across all 20 root tables and their table-to-table relationships. "
-            "Use the business_workflow_context to prefer features that help detect wrong routing, missing stages, "
-            "unexpected rejection/acceptance patterns, or unusual movement through the payment flow."
+            "Act as a senior Government Accounts, Defence Audit, Payment Flow, and Forensic Analytics architect. "
+            "Create one anomaly detection source plan for THIRD_PARTY_PAYMENTS only. "
+            "The final model is Isolation Forest; your job is not to label fraud, but to design deterministic, "
+            "machine-computable forensic features that help the model detect hidden suspicious payment behavior. "
+            "Python removed empty and mostly-null columns before this prompt. Choose amount/date/context columns "
+            "and engineered features from full_usable_columns. Use relationship_context to understand direct FK "
+            "joins that runtime can enrich automatically. Strict table scope is dak, bill, cheque_slip, "
+            "punching_medium, schedule3, ecs. Strict section scope is dak.fk_section IN (142, 228, 265, 383); "
+            "all downstream records must belong to those dak rows. "
+            "Use validation_context as business evidence, but do not turn it into a missing-column checklist. "
+            "Design features for column-to-column contradictions, row-to-row repeated patterns, table-to-table "
+            "flow breaks, skipped stages, status/payment contradictions, approval/downstream contradictions, "
+            "rejection/payment contradictions, amount inconsistencies, date sequence violations, duplicate "
+            "invoice/payment behavior, multiplicity, weak final payment trails, abnormal stage timing, and "
+            "records that look normal alone but suspicious when compared with related rows."
         ),
         "strict_rules": [
             "Use only column names from full_usable_columns.",
+            "Use only these tables in reasoning: dak, bill, cheque_slip, punching_medium, schedule3, ecs.",
+            "Use only THIRD_PARTY_PAYMENTS section ids: 142, 228, 265, 383.",
             "Do not invent columns, formulas, or feature operations.",
+            "Do not create final labels like fraud=true.",
+            "Do not require LLM reasoning during scan time.",
+            "Every feature must be deterministic, numeric, safe for null values, and explainable to an auditor.",
+            "Do not convert validation_context into free-form SQL or boolean formulas; translate it into supported feature_contract operations only.",
             "The amount_column must be a real numeric money/value column from full_usable_columns; if no money-named column exists, choose the best non-PK/non-FK numeric measure.",
             "The id_column should normally be the primary key column if present.",
-            "context_columns should be useful grouping/comparison columns such as vendor, unit, central unit, section, employee, status, type, mode, approved, or record_status.",
+            "context_columns should be useful forensic grouping/comparison columns such as DAK, bill, cheque slip, schedule, ECS, vendor, beneficiary, bank/account, invoice/reference number, unit, section, bill type, payment mode, approval, passed, cancelled, rejection, and record_status.",
             "date_column must be a date/timestamp column from full_usable_columns, or null if none is suitable.",
             "Each feature_plan item must obey feature_contract exactly.",
+            "Highest priority order: broken flow, skipped stages, downstream without upstream, rejected/invalid moving forward, approved/valid not moving forward, payment without approval trail, date sequence contradiction, amount relationship contradiction, duplicate invoice/payment pattern, abnormal row-to-row repetition, multiplicity, final ECS/payment with weak trail.",
+            "Start feature_plan with forensic identity/amount/tax features when visible columns allow them; do not fill the plan with is_missing features.",
+            "Use duplicate_key for repeated invoice/reference/FIS/DAK/bill/vendor/beneficiary/payment identities.",
+            "Use duplicate_normalized_key when invoice/reference/FIS/DAK/bill/vendor/beneficiary/payment identifiers may differ only by spaces, punctuation, case, or formatting.",
+            "Use duplicate_distinct when the same identity appears across different DAKs, beneficiaries, units, dates, invoice numbers, amounts, or vendors.",
+            "Use rolling_window_count and rolling_window_amount_sum with params.window_days when vendor/invoice/reference/DAK/bill/payment identities repeat across nearby dates; this is the preferred expression for possible bill splitting.",
+            "Use ratio_to_group_median, group_rank_pct, and group_frequency for vendor/unit/bill-type/payment-mode/routing amount inconsistency.",
+            "Use numeric_gt and numeric_lt for amount integrity checks such as passed greater than claimed, CDA plus unit payment mismatch proxies, cheque/PM/schedule/ECS amount inconsistencies, or recovery/payment totals when comparable columns exist.",
+            "Use date_after and date_in_future for invoice, bill, reference, FIS, cheque, PM, schedule, CMP, and ECS chronology issues.",
+            "Use starts_with/equal flags for documented risky identifiers or statuses, such as FIS prefix 29 in normal TPP context, cancelled rows, invalid statuses, or payment modes when validation_context says they matter.",
+            "Use is_missing, all_missing, missing_when_equals, and missing_when_present only when absence directly supports a forensic risk such as fake invoice identity, missing vendor/beneficiary for a payable row, missing payment trail, or missing tax/payment evidence on GST-applicable bills.",
             "For amount operations, source must be amount.",
             "For date operations, source must be event_date and date_column must not be null.",
             "For group operations, group_by must be one selected context column.",
+            "When validation_context names a visible amount/date/context column, prefer it over generic columns if it helps detect third-party payment risk.",
             "Prefer FK context columns when their relationship_context adds useful business meaning.",
             "Use id and FK columns as the primary relationship path between tables.",
             "For flow tables, prefer fk_dak, fk_bill, fk_cheque_slip, fk_schedule3, status, approved, passed, rejected, and date columns when they exist.",
             "Do not output referenced-table columns directly; Python will join direct FK tables safely at runtime.",
             "Do not skip this table. If the table is weak, still return the best valid source plan from visible columns.",
         ],
+        "forensic_feature_priorities": FORENSIC_FEATURE_PRIORITIES,
         "business_workflow_context": BUSINESS_WORKFLOW_CONTEXT,
+        "validation_context": validation_context,
         "feature_contract": get_feature_contract(),
         "output_contract": {
             "format": "json_object",
@@ -863,7 +1167,13 @@ def ask_llama_to_plan_table(table_detail):
                             "op": "operation from feature_contract.supported_operations",
                             "source": "amount or event_date, required for amount/date operations",
                             "group_by": "selected context column, required for group operations",
-                            "params": "optional operation parameters",
+                            "column": "selected column, required for single-column rule operations",
+                            "columns": "selected columns, required for all_missing, duplicate, normalized duplicate, and rolling-window operations",
+                            "left": "selected left column, required for date_after",
+                            "right": "selected right column, required for date_after or numeric column comparison",
+                            "condition_column": "selected condition column for conditional missing rules",
+                            "value": "literal value for equals, starts_with, missing_when_equals, or numeric threshold",
+                            "params": "optional operation parameters, e.g. {'window_days': 7} for rolling-window operations",
                             "reason": "why this feature is important",
                         }
                     ],
@@ -878,6 +1188,14 @@ def ask_llama_to_plan_table(table_detail):
         "full_usable_columns": full_usable_columns,
         "relationship_context": table_detail.get("relationship_context", []),
     }
+
+
+def ask_llama_to_plan_table(table_detail):
+    table_name = table_detail["table"]
+    full_usable_columns = [compact_column_for_llama(column) for column in table_detail["columns"]]
+    echo(f"Asking the LLM to plan features for {table_name} using {len(full_usable_columns)} usable column(s).")
+
+    prompt = build_table_feature_prompt(table_detail)
 
     response = create_llama_architecture_completion(prompt)
     raw_text = response.choices[0].message.content.strip()
@@ -1003,7 +1321,7 @@ def ask_llama_for_architecture(schema_rows):
         if table not in table_details
     ]
     echo(
-        "Planning every required LLAMA_BUSINESS_PRIORITY_TABLES root table. "
+        "Planning every required ARCHITECT_SOURCE_TABLES root table. "
         f"Available={len(selected_tables)}, missing_or_unscorable={len(missing_required_tables)}."
     )
     if missing_required_tables:
@@ -1043,6 +1361,12 @@ def repair_architecture_payload(payload, schema_rows, validation_error):
         schema = compact_schema_subset_for_llama(schema_rows, candidate_tables)
     else:
         schema = select_schema_candidates_for_llama(schema_rows)
+    repair_tables = [table["table"] for table in schema if isinstance(table, dict) and table.get("table")]
+    validation_context = {
+        table: validation_rules_for_table(table)
+        for table in repair_tables
+        if validation_rules_for_table(table)
+    }
     echo(f"Asking the LLM to repair architecture JSON using {len(schema)} table schema(s).")
 
     prompt = {
@@ -1057,9 +1381,11 @@ def repair_architecture_payload(payload, schema_rows, validation_error):
             "Do not use excluded_tables.",
             "Each source must include table, id_column, amount_column, context_columns, date_column, why_this_source, and feature_plan.",
             "Each feature_plan item must obey feature_contract exactly.",
+            "Use validation_context as business-rule guidance, but only with supported feature_contract operations.",
             "Return at least one source with at least two valid feature_plan items.",
         ],
         "excluded_tables": sorted(EXCLUDED_TABLES),
+        "validation_context": validation_context,
         "feature_contract": get_feature_contract(),
         "output_contract": {
             "sources": [
@@ -1125,9 +1451,9 @@ def validate_architecture(payload, schema_rows):
             rejected += 1
             echo(f"Rejected excluded table: {table}")
             continue
-        if not is_allowed_source_table(table):
+        if not is_architect_source_table(table):
             rejected += 1
-            echo(f"Rejected non-priority table outside LLAMA_BUSINESS_PRIORITY_TABLES: {table}")
+            echo(f"Rejected non-priority table outside ARCHITECT_SOURCE_TABLES: {table}")
             continue
         if table not in tables:
             rejected += 1
@@ -1199,11 +1525,20 @@ def write_source_config(runtime_sources):
 
 def write_anomaly_guide(payload, runtime_sources):
     guide_markdown = str(payload.get("guide_markdown", "")).strip()
+    validation_paths = configured_validation_context_paths()
     lines = [
         "# Tulip 2.0 Anomaly Feature Guide",
         "",
         "This guide is generated by the configured local LLM from `tulip2.0_schema.md`.",
         "Python validates that every selected table, column, and feature operation exists before writing runtime config.",
+        "",
+        "## Validation Context Files",
+        "",
+        *(
+            [f"- `{path}`" for path in validation_paths]
+            if validation_paths
+            else ["No validation context files were loaded."]
+        ),
         "",
         "## LLM Architecture Notes",
         "",
